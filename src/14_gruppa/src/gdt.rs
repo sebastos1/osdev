@@ -3,11 +3,14 @@ use core::ptr::addr_of;
 use lazy_static::lazy_static;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::structures::gdt::{SegmentSelector, GlobalDescriptorTable, Descriptor};
-use x86_64::registers::segmentation::DS;
 
+struct Selectors {
+    code_selector: SegmentSelector,
+    data_selector: SegmentSelector,
+    tss_selector: SegmentSelector,
+}
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
-
 lazy_static! {
     static ref TSS: TaskStateSegment = {
         let mut tss = TaskStateSegment::new();
@@ -41,13 +44,8 @@ lazy_static! {
     };
 }
 
-struct Selectors {
-    code_selector: SegmentSelector,
-    data_selector: SegmentSelector,
-    tss_selector: SegmentSelector,
-}
-
 pub fn init() {
+    use x86_64::registers::segmentation::DS;
     use x86_64::instructions::tables::load_tss;
     use x86_64::instructions::segmentation::{CS, Segment};
     

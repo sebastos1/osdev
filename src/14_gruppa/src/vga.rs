@@ -8,6 +8,7 @@ lazy_static! {
     pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer::new());
 }
 
+// enum for colors
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -30,6 +31,7 @@ pub enum Color {
     White = 15,
 }
 
+// background color in the first nibble, foreground in the second nibble
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct ColorCode(u8);
@@ -55,13 +57,14 @@ struct Buffer {
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
+// writer 
 pub struct Writer {
     column_position: usize,
     color_code: ColorCode,
     buffer: &'static mut Buffer,
 }
 impl Writer {
-    pub fn new() -> Writer {
+    fn new() -> Writer {
         Writer {
             column_position: 0,
             color_code: ColorCode::new(Color::Yellow, Color::Black),
@@ -69,7 +72,7 @@ impl Writer {
         }
     }
 
-    pub fn write_byte(&mut self, byte: u8) {
+    fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
             byte => {

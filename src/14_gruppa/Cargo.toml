@@ -9,6 +9,9 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
+[package.metadata.bootimage]
+run-args = []
+
 [dependencies]
 spin = "0.5.2"
 volatile = "0.2.6"

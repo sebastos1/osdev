@@ -3,6 +3,8 @@ use core::ptr::addr_of;
 use lazy_static::lazy_static;
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::structures::gdt::{SegmentSelector, GlobalDescriptorTable, Descriptor};
+use x86_64::registers::segmentation::DS;
+
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
@@ -24,12 +26,15 @@ lazy_static! {
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
-        let code_selector = gdt.add_entry(Descriptor::kernel_code_segment());
-        let tss_selector = gdt.add_entry(Descriptor::tss_segment(&TSS));
+        // the NULL descriptor is implicitly created when the GDT is created
+        let code_selector = gdt.add_entry(Descriptor::kernel_code_segment()); // text descriptor
+        let data_selector = gdt.add_entry(Descriptor::kernel_data_segment()); // data descriptor
+        let tss_selector = gdt.add_entry(Descriptor::tss_segment(&TSS)); // task state segment
         (
             gdt,
             Selectors {
                 code_selector,
+                data_selector,
                 tss_selector,
             },
         )
@@ -38,6 +43,7 @@ lazy_static! {
 
 struct Selectors {
     code_selector: SegmentSelector,
+    data_selector: SegmentSelector,
     tss_selector: SegmentSelector,
 }
 
@@ -48,6 +54,7 @@ pub fn init() {
     GDT.0.load();
     unsafe {
         CS::set_reg(GDT.1.code_selector);
+        DS::set_reg(GDT.1.data_selector);
         load_tss(GDT.1.tss_selector);
     }
 }

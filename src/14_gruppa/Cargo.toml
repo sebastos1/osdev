@@ -10,7 +10,9 @@ panic = "abort"
 panic = "abort"
 
 [package.metadata.bootimage]
-run-args = []
+run-args = [
+    "-audiodev", "pa,id=speaker", "-machine", "pcspk-audiodev=speaker"
+]
 
 [dependencies]
 spin = "0.5.2"

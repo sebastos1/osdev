@@ -1,29 +1,24 @@
 use spin;
-use crate::gdt;
-use crate::print;
-use crate::println;
-use crate::hlt_loop;
 use pic8259::ChainedPics;
 use lazy_static::lazy_static;
-use core::sync::atomic::{Ordering, AtomicU64};
+use crate::pit::SYSTEM_TICKS;
+use core::sync::atomic::Ordering;
+use crate::{gdt, print, println};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
-
-pub static TICKS: AtomicU64 = AtomicU64::new(0);
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe { idt.double_fault.set_handler_fn(double_fault_handler).set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX); }
-        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
-        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
+        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_handler);
+        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_handler);
         idt.page_fault.set_handler_fn(page_fault_handler);
-
         idt
     };
 }
 
-pub fn init_idt() {
+pub fn init() {
     IDT.load();
 }
 
@@ -37,24 +32,23 @@ pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
     Keyboard,
 }
+
 impl InterruptIndex {
+    fn as_usize(self) -> usize {
+        self as u8 as usize
+    }
+
     fn as_u8(self) -> u8 {
         self as u8
     }
-
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
-    }
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
-{
-    TICKS.fetch_add(1, Ordering::SeqCst);
-    unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8()); }
+extern "x86-interrupt" fn timer_handler(_: InterruptStackFrame) {
+    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);
+    unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer as u8); }
 }
 
-// keyboard input
-extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame)
+extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame)
 {
     use spin::Mutex;
     use x86_64::instructions::port::Port;
@@ -81,25 +75,17 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8()); }
 }
 
-extern "x86-interrupt" fn page_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: PageFaultErrorCode,
-) {
-    use x86_64::registers::control::Cr2;
-
-    println!("EXCEPTION: PAGE FAULT");
-    println!("Accessed Address: {:?}", Cr2::read());
-    println!("Error Code: {:?}", error_code);
-    println!("{:#?}", stack_frame);
-    hlt_loop();
+extern "x86-interrupt" fn page_fault_handler(frame: InterruptStackFrame, error: PageFaultErrorCode) {
+    println!("EXCEPTION: PAGE FAULT\nAccessed Address: {:?}\nError Code: {:?}\n{:#?}", x86_64::registers::control::Cr2::read(), error, frame);
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame)
-{
-    println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+extern "x86-interrupt" fn breakpoint_handler(frame: InterruptStackFrame) {
+    println!("EXCEPTION: BREAKPOINT\n{:#?}", frame);
 }
 
-extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, _error_code: u64) -> !
-{
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+extern "x86-interrupt" fn double_fault_handler(frame: InterruptStackFrame, _: u64) -> ! {
+    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", frame);
 }

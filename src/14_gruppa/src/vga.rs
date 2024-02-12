@@ -3,91 +3,58 @@ use spin::Mutex;
 use volatile::Volatile;
 use lazy_static::lazy_static;
 
-// initialize a writer than can only be used by a single thread at a time
 lazy_static! {
-    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer::new());
+    pub static ref VGA_WRITER: Mutex<VgaWriter> = Mutex::new(VgaWriter::default());
 }
 
-// enum for colors
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum Color {
-    Black = 0,
-    Blue = 1,
-    Green = 2,
-    Cyan = 3,
-    Red = 4,
-    Magenta = 5,
-    Brown = 6,
-    LightGray = 7,
-    DarkGray = 8,
-    LightBlue = 9,
-    LightGreen = 10,
-    LightCyan = 11,
-    LightRed = 12,
-    Pink = 13,
-    Yellow = 14,
-    White = 15,
+pub enum VgaColor {
+    Black, Blue, Green, Cyan, Red, Magenta, Brown, LightGrey,
+    DarkGrey, LightBlue, LightGreen, LightCyan, LightRed, Pink, Yellow, White,
 }
 
-// background color in the first nibble, foreground in the second nibble
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct ColorCode(u8);
-impl ColorCode {
-    fn new(foreground: Color, background: Color) -> ColorCode {
-        ColorCode((background as u8) << 4 | (foreground as u8))
+struct VgaColorCode(u8);
+
+impl VgaColorCode {
+    fn new(fg: VgaColor, bg: VgaColor) -> Self {
+        Self((bg as u8) << 4 | fg as u8)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-struct ScreenChar {
-    ascii_character: u8,
-    color_code: ColorCode,
+struct VgaChar {
+    character: u8,
+    color: VgaColorCode,
 }
 
-// standard vga dimensions
-const BUFFER_HEIGHT: usize = 25;
-const BUFFER_WIDTH: usize = 80;
+const HEIGHT: usize = 25;
+const WIDTH: usize = 80;
 
 #[repr(transparent)]
 struct Buffer {
-    chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
+    chars: [[Volatile<VgaChar>; WIDTH]; HEIGHT],
 }
 
-// writer 
-pub struct Writer {
+pub struct VgaWriter {
     column_position: usize,
-    color_code: ColorCode,
+    color: VgaColorCode,
     buffer: &'static mut Buffer,
 }
-impl Writer {
-    fn new() -> Writer {
-        Writer {
-            column_position: 0,
-            color_code: ColorCode::new(Color::White, Color::Black),
-            buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-        }
-    }
 
+impl VgaWriter {
     fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
-            byte => {
-                if self.column_position >= BUFFER_WIDTH {
+            _ => {
+                if self.column_position >= WIDTH {
                     self.new_line();
                 }
-
-                let row = BUFFER_HEIGHT - 1;
-                let col = self.column_position;
-
-                let color_code = self.color_code;
-                self.buffer.chars[row][col].write(ScreenChar {
-                    ascii_character: byte,
-                    color_code,
-                });
+                let row = HEIGHT - 1;
+                self.buffer.chars[row][self.column_position].write(VgaChar { character: byte, color: self.color });
                 self.column_position += 1;
             }
         }
@@ -95,43 +62,47 @@ impl Writer {
 
     fn write_string(&mut self, s: &str) {
         for byte in s.bytes() {
-            match byte {
-                0x20..=0x7e | b'\n' => self.write_byte(byte),
-                _ => self.write_byte(0xfe),
-            }
+            self.write_byte(byte)
         }
     }
 
     fn new_line(&mut self) {
-        for row in 1..BUFFER_HEIGHT {
-            for col in 0..BUFFER_WIDTH {
+        for row in 1..HEIGHT {
+            for col in 0..WIDTH {
                 let character = self.buffer.chars[row][col].read();
                 self.buffer.chars[row - 1][col].write(character);
             }
         }
-        self.clear_row(BUFFER_HEIGHT - 1);
+        self.clear_row(HEIGHT - 1);
         self.column_position = 0;
     }
 
     fn clear_row(&mut self, row: usize) {
-        let blank = ScreenChar {
-            ascii_character: b' ',
-            color_code: self.color_code,
-        };
-        for col in 0..BUFFER_WIDTH {
+        let blank = VgaChar { character: b' ', color: self.color };
+        for col in 0..WIDTH {
             self.buffer.chars[row][col].write(blank);
         }
     }
 }
 
-impl fmt::Write for Writer {
+impl fmt::Write for VgaWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.write_string(s);
         Ok(())
     }
 }
 
-// based on the default rust print macros
+impl Default for VgaWriter {
+    fn default() -> Self {
+        Self {
+            column_position: 0,
+            color: VgaColorCode::new(VgaColor::White, VgaColor::Black),
+            buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
+        }
+    }
+}
+
+// Simplified macros for printing to the VGA buffer
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::vga::_print(format_args!($($arg)*)));
@@ -146,9 +117,5 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    use x86_64::instructions::interrupts;
-
-    interrupts::without_interrupts(|| {
-        WRITER.lock().write_fmt(args).unwrap();
-    });
+    VGA_WRITER.lock().write_fmt(args).expect("Printing to VGA failed");
 }

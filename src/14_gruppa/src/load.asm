@@ -1,22 +1,16 @@
-    BITS 16                  ; Tells NASM to generate 16-bit code
-    ORG 0x7C00               ; Origin, BIOS loads the boot sector here
+BITS 16                  ; Tells NASM to generate 16-bit code
+ORG 0x7C00               ; Origin, BIOS loads the boot sector here
 
 start:
     cli                      ; Disable interrupts during setup
-    mov ax, cs               ; Setup segment registers
-    mov ds, ax
-    mov es, ax
-    mov ss, ax
-    mov sp, 0x7C00           ; Setup stack pointer
 
-    ; Your initialization code here (e.g., switch to protected mode)
     ; Set up the GDT
     lgdt [gdt_descriptor]
 
-    ; Enable protected mode
-    mov eax, cr0
-    or eax, 0x1
-    mov cr0, eax
+     ; Enable protected mode
+    mov eax, cr0             ; Load CRO into eax
+    or eax, 0x1              ; Set bit 0 
+    mov cr0, eax             ; Store back into CRO
 
     ; Jump to 32-bit code segment
     jmp CODE_SEG:protected_mode_start

@@ -4,6 +4,7 @@ build-std-features = ["compiler-builtins-mem"]
 
 [build]
 target = "x86_64-os.json"
+rustflags = [ "-C", "link-arg=-Tlink.ld" ]
 
-[target.'cfg(target_os = "none")']
-runner = "bootimage runner"
+# [target.'cfg(target_os = "none")']
+# runner = "bootimage runner"

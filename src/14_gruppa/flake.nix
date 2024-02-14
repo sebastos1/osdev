@@ -27,8 +27,13 @@
             rust
             qemu
             cargo-bootimage
+            nasm
+            pavucontrol
           ];
         };
+        shellHook = ''
+          pactl set-sink-volume @DEFAULT_SINK@ 10%
+        '';
       }
     );
 }

@@ -13,6 +13,7 @@ panic = "abort"
 # run-args = [ "-audiodev", "pa,id=speaker", "-machine", "pcspk-audiodev=speaker" ]
 
 [dependencies]
+log = "0.4"
 # spin = "0.5.2"
 # volatile = "0.2.6"
 # x86_64 = "0.14.2"

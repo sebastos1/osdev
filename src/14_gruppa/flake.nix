@@ -26,14 +26,12 @@
           buildInputs = [
             rust
             qemu
-            cargo-bootimage
             nasm
+            grub2
+            xorriso
             pavucontrol
           ];
         };
-        shellHook = ''
-          pactl set-sink-volume @DEFAULT_SINK@ 10%
-        '';
       }
     );
 }

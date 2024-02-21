@@ -1,3 +1,4 @@
 ```bash
-make run
+nix develop
+just
 ```

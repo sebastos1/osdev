@@ -27,6 +27,7 @@
             rust
             qemu
             nasm
+            just
             grub2
             xorriso
             pavucontrol

@@ -7,8 +7,10 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
-rlibc = "1.0.0"
-lazy_static = { version = "1.0", features = ["spin_no_std"] }
 spin = "0.5.2"
-volatile = "0.2.6"
+rlibc = "1.0.0"
 x86_64 = "0.14.2"
+volatile = "0.2.6"
+multiboot2 = "0.19.0"
+lazy_static = { version = "1.0", features = ["spin_no_std"] }
+linked_list_allocator = "0.10.5"

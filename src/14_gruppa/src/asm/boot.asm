@@ -5,6 +5,7 @@ section .text
 bits 32
 start:
     mov esp, stack_top
+    mov edi, ebx            ; Move Multiboot info pointer to edi
 
     call check_multiboot
     call check_cpuid
@@ -34,27 +35,20 @@ check_cpuid:
     ; Check if CPUID is supported by attempting to flip the ID bit (bit 21)
     ; in the FLAGS register. If we can flip it, CPUID is available.
 
-    ; Copy FLAGS in to EAX via stack
-    pushfd
+    pushfd                  ; Copy FLAGS in to EAX via stack
     pop eax
 
-    ; Copy to ECX as well for comparing later on
-    mov ecx, eax
+    mov ecx, eax            ; Copy to ECX as well for comparing later on
 
-    ; Flip the ID bit
-    xor eax, 1 << 21
+    xor eax, 1 << 21        ; Flip the ID bit
 
-    ; Copy EAX to FLAGS via the stack
-    push eax
+    push eax                ; Copy EAX to FLAGS via the stack
     popfd
 
-    ; Copy FLAGS back to EAX (with the flipped bit if CPUID is supported)
-    pushfd
+    pushfd                  ; Copy FLAGS back to EAX (with the flipped bit if CPUID is supported)
     pop eax
 
-    ; Restore FLAGS from the old version stored in ECX (i.e. flipping the
-    ; ID bit back if it was ever flipped).
-    push ecx
+    push ecx                ; Restore FLAGS from the old version stored in ECX (i.e. flipping the ID bit back if it was ever flipped).
     popfd
 
     ; Compare EAX and ECX. If they are equal then that means the bit
@@ -151,7 +145,7 @@ p3_table:
 p2_table:
     resb 4096
 stack_bottom:
-    resb 64
+    resb 4096 * 4
 stack_top:
 
 section .rodata

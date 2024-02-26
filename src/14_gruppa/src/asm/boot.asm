@@ -5,7 +5,7 @@ section .text
 bits 32
 start:
     mov esp, stack_top
-    mov edi, ebx            ; Move Multiboot info pointer to edi
+    mov edi, ebx       ; move Multiboot info pointer to edi
 
     call check_multiboot
     call check_cpuid
@@ -35,20 +35,27 @@ check_cpuid:
     ; Check if CPUID is supported by attempting to flip the ID bit (bit 21)
     ; in the FLAGS register. If we can flip it, CPUID is available.
 
-    pushfd                  ; Copy FLAGS in to EAX via stack
+    ; Copy FLAGS in to EAX via stack
+    pushfd
     pop eax
 
-    mov ecx, eax            ; Copy to ECX as well for comparing later on
+    ; Copy to ECX as well for comparing later on
+    mov ecx, eax
 
-    xor eax, 1 << 21        ; Flip the ID bit
+    ; Flip the ID bit
+    xor eax, 1 << 21
 
-    push eax                ; Copy EAX to FLAGS via the stack
+    ; Copy EAX to FLAGS via the stack
+    push eax
     popfd
 
-    pushfd                  ; Copy FLAGS back to EAX (with the flipped bit if CPUID is supported)
+    ; Copy FLAGS back to EAX (with the flipped bit if CPUID is supported)
+    pushfd
     pop eax
 
-    push ecx                ; Restore FLAGS from the old version stored in ECX (i.e. flipping the ID bit back if it was ever flipped).
+    ; Restore FLAGS from the old version stored in ECX (i.e. flipping the
+    ; ID bit back if it was ever flipped).
+    push ecx
     popfd
 
     ; Compare EAX and ECX. If they are equal then that means the bit
@@ -78,6 +85,11 @@ check_long_mode:
     jmp error
 
 set_up_page_tables:
+    ; map P4 table recursively
+    mov eax, p4_table
+    or eax, 0b11 ; present + writable
+    mov [p4_table + 511 * 8], eax
+
     ; map first P4 entry to P3 table
     mov eax, p3_table
     or eax, 0b11 ; present + writable
@@ -156,5 +168,3 @@ gdt64:
 .pointer:
     dw $ - gdt64 - 1
     dq gdt64
-
-section .note.GNU-stack noalloc noexec nowrite progbits

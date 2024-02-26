@@ -1,26 +1,53 @@
-pub const PAGE_SIZE: usize = 4096;
 use multiboot2::MemoryArea;
-use linked_list_allocator::LockedHeap;
-
-// temp
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
+use crate::memory::PAGE_SIZE;
+use crate::memory::PhysicalAddress;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Frame {
-    number: usize,
+    pub number: usize,
 }
 impl Frame {
-    fn containing_address(address: usize) -> Frame {
+    pub fn containing_address(address: usize) -> Frame {
         Frame{ number: address / PAGE_SIZE }
     }
+
+    pub fn start_address(&self) -> PhysicalAddress {
+        self.number * PAGE_SIZE
+    }
+
+    pub fn clone(&self) -> Frame {
+        Frame { number: self.number }
+    }
+
+    pub fn range_inclusive(start: Frame, end: Frame) -> FrameIter {
+        FrameIter {
+            start,
+            end,
+        }
+    }
 }
+
+pub struct FrameIter {
+    start: Frame,
+    end: Frame,
+}
+impl Iterator for FrameIter {
+    type Item = Frame;
+
+    fn next(&mut self) -> Option<Frame> {
+        if self.start > self.end {
+            return None
+        }
+        let frame = self.start.clone();
+        self.start.number += 1;
+        Some(frame)
+    }
+}
+
 pub trait FrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame>;
     fn deallocate_frame(&mut self, frame: Frame);
 }
-
 
 pub struct AreaFrameAllocator<'a> {
     next_free_frame: Frame,
@@ -31,7 +58,6 @@ pub struct AreaFrameAllocator<'a> {
     multiboot_start: Frame,
     multiboot_end: Frame,
 }
-
 impl AreaFrameAllocator<'_> {
     pub fn new(
         kernel_start: usize, 
@@ -67,12 +93,10 @@ impl AreaFrameAllocator<'_> {
         }
     }
 }
-
 impl FrameAllocator for AreaFrameAllocator<'_> {
     fn allocate_frame(&mut self) -> Option<Frame> {
         while let Some(area) = self.current_area {
             let frame = Frame { number: self.next_free_frame.number };
-
             let current_area_last_frame = Frame::containing_address(area.start_address() as usize + area.size() as usize - 1);
 
             if frame > current_area_last_frame {
@@ -88,9 +112,7 @@ impl FrameAllocator for AreaFrameAllocator<'_> {
             self.next_free_frame.number += 1;
             return Some(frame);
         }
-
         None
     }
-    
     fn deallocate_frame(&mut self, _frame: Frame) { unimplemented!() }
 }

@@ -1,52 +1,43 @@
 #![no_std]
+#![feature(allocator_api)]
 
 extern crate rlibc;
 extern crate alloc;
+#[macro_use]
+extern crate bitflags;
 extern crate multiboot2;
 
 #[macro_use]
 mod vga;
+mod util;
 mod memory;
+
+use linked_list_allocator::LockedHeap;
+#[global_allocator]
+static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[no_mangle]
 pub extern fn rust_main(multiboot_information_address: usize) {
-    use crate::memory::FrameAllocator;
-
     vga::clear_screen();
-    println!("Hello World{}", "!");
+    println!("Hello World! {}", 5*5);
+    
+    util::set_bits_init();
+    memory::init(multiboot_information_address);
 
-    let boot_info = unsafe { 
-        multiboot2::BootInformation::load(
-            multiboot_information_address as *const multiboot2::BootInformationHeader
-        ).unwrap() 
-    };
-    let memory_map_tag = boot_info.memory_map_tag().expect("Memory map tag required");
-    let elf_sections = boot_info.elf_sections().expect("elf sections required");
-    let kernel_start = elf_sections.clone().map(|s| s.start_address()).min().unwrap();
-    let kernel_end = elf_sections.map(|s| s.start_address() + s.size()).max().unwrap();
-    let multiboot_start = multiboot_information_address;
-    let multiboot_end = multiboot_start + (boot_info.total_size() as usize);
- 
-    let mut frame_allocator = memory::AreaFrameAllocator::new(
-        kernel_start as usize, 
-        kernel_end as usize, 
-        multiboot_start,
-        multiboot_end, 
-        memory_map_tag.memory_areas()
-    );
-
-    for i in 0.. {
-        if let None = frame_allocator.allocate_frame() {
-            println!("allocated {} frames", i);
-            break;
-        }
+    unsafe {
+        HEAP_ALLOCATOR.lock().init(crate::memory::HEAP_START as *mut u8, crate::memory::HEAP_START + crate::memory::HEAP_SIZE);
     }
 
+    use alloc::vec::Vec;
+    let vec: Vec<i32> = (1..=1000).collect();
+    println!("{:?}", vec);
+    
+    println!("It did not crash!");
     loop{ x86_64::instructions::hlt(); }
 }
 
 use core::panic::PanicInfo;
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! { 
     loop { x86_64::instructions::hlt(); }
 }

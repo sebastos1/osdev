@@ -2,7 +2,9 @@ ENTRY(start)
 SECTIONS {
     . = 1M;
     .boot : { KEEP(*(.multiboot_header)) }
-    .text : { *(.text .text.*) }
-    .rodata : { *(.rodata .rodata.*) }
-    .data.rel.ro : { *(.data.rel.ro.local*) *(.data.rel.ro .data.rel.ro.*) }
+    .text ALIGN(4096) : { *(.text .text.*) }
+    .rodata ALIGN(4096) : { *(.rodata .rodata.*) }
+    .data.rel.ro ALIGN(4096) : { *(.data.rel.ro.local*) *(.data.rel.ro .data.rel.ro.*) }
+    .data : ALIGN(4096) { *(.data .data.*) }
+    .bss : ALIGN(4096) { *(.bss .bss.*) *(COMMON) }
 }

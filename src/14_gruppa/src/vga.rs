@@ -10,8 +10,8 @@ lazy_static! {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VgaColor {
-    Black, Blue, Green, Cyan, Red, Magenta, Brown, LightGrey,
-    DarkGrey, LightBlue, LightGreen, LightCyan, LightRed, Pink, Yellow, White,
+    Black, _Blue, _Green, _Cyan, _Red, _Magenta, _Brown, _LightGrey,
+    _DarkGrey, _LightBlue, _LightGreen, _LightCyan, _LightRed, _Pink, _Yellow, White,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -26,13 +26,13 @@ pub extern fn rust_main(multiboot_addr: usize) {
     vga::clear_screen();
     println!("Hello World! {}", 5*5);
     
-    gdt::init();
+    // gdt::init();
+    // pit::init();
 
-    pit::init();
     memory::init(multiboot_addr);
     // let mut memory_controller = memory::init(multiboot_addr);
-    // interrupts::init(); // &mut memory_controller
-    // x86_64::instructions::interrupts::int3();
+    interrupts::init(); // &mut memory_controller
+    x86_64::instructions::interrupts::int3();
 
 
     // unsafe {
@@ -40,7 +40,7 @@ pub extern fn rust_main(multiboot_addr: usize) {
     // }
     
     // double fault
-    // unsafe { *(0xdeadbeaf as *mut u64) = 42; };
+    unsafe { *(0xdeadbeaf as *mut u64) = 42; };
 
     // use alloc::vec::Vec;
     // let vec: Vec<i32> = (1..=1000).collect();
@@ -48,13 +48,11 @@ pub extern fn rust_main(multiboot_addr: usize) {
     
     println!("It did not crash!");
 
-    // use core::sync::atomic;
+    use core::sync::atomic;
     let mut i = 0;
     loop{
         // println!("Tick: {:?}", pit::SYSTEM_TICKS.load(atomic::Ordering::SeqCst));
-        // println!("Tick {}", i);
-        // i += 1; 
-        x86_64::instructions::hlt(); 
+        // x86_64::instructions::hlt(); 
     }
 }
 

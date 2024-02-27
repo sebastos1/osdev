@@ -6,7 +6,7 @@ pub fn init() {
 }
 
 fn enable_nxe_bit() {
-    let efer_msr: u64 = 0xC000_0080;
+    let efer_msr: u64 = 0xC000_0080; // what is this
     let mut efer: u64;
     unsafe { asm!("rdmsr", in("ecx") efer_msr, out("eax") efer, out("edx") _, options(nostack)); } // Read EFER
     efer |= 1 << 11; // Set NXE bit

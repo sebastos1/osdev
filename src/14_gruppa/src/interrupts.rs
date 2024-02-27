@@ -11,7 +11,6 @@ pub fn init() { // memory_controller: &mut MemoryController
     IDT.load();
 }
 
-
 // x86 crate has a list of idt entries
 // https://docs.rs/x86_64/latest/x86_64/structures/idt/struct.InterruptDescriptorTable.html
 lazy_static! {
@@ -48,7 +47,6 @@ impl InterruptIndex {
         self as u8
     }
 }
-
 
 extern "x86-interrupt" fn timer_handler(_: InterruptStackFrame) {
     println!("huh");

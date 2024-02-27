@@ -7,17 +7,6 @@ rust_os       := "target/x86_64-os/debug/libos.a"
 
 default: run
 
-@build: build_kernel
-    mkdir -p build/isofiles/boot/grub
-    cp {{kernel}} build/isofiles/boot/kernel.bin
-    cp {{grub_cfg}} build/isofiles/boot/grub
-    grub-mkrescue -o {{iso}} build/isofiles 2> /dev/null
-    rm -r build/isofiles
-
-@run: build
-    echo "Running..."
-    qemu-system-x86_64 -cdrom {{iso}}
-
 @build_kernel:
     cargo build -Zbuild-std --target {{target}}.json
     sh -c '\
@@ -29,3 +18,14 @@ default: run
         obj_files="$obj_files $out_file"; \
     done && \
     ld -n --gc-sections -T {{linker_script}} -o {{kernel}} $obj_files {{rust_os}} 2>/dev/null'
+
+@build: build_kernel
+    mkdir -p build/isofiles/boot/grub
+    cp {{kernel}} build/isofiles/boot/kernel.bin
+    cp {{grub_cfg}} build/isofiles/boot/grub
+    grub-mkrescue -o {{iso}} build/isofiles 2> /dev/null
+    rm -r build/isofiles
+
+@run: build
+    echo "Running..."
+    qemu-system-x86_64 -cdrom {{iso}}

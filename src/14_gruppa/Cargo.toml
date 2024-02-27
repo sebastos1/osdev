@@ -21,3 +21,5 @@ volatile = "0.2.6"
 multiboot2 = "0.19.0"
 lazy_static = { version = "1.0", features = ["spin_no_std"] }
 linked_list_allocator = "0.10.5"
+pic8259 = "0.10.1"
+pc-keyboard = "0.5.0"

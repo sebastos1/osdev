@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(allocator_api)]
+#![feature(abi_x86_interrupt)]
 
 extern crate rlibc;
 extern crate alloc;
@@ -9,31 +10,52 @@ extern crate multiboot2;
 
 #[macro_use]
 mod vga;
+mod pit;
+mod gdt;
 mod util;
 mod memory;
+mod interrupts;
 
 use linked_list_allocator::LockedHeap;
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[no_mangle]
-pub extern fn rust_main(multiboot_information_address: usize) {
+pub extern fn rust_main(multiboot_addr: usize) {
+    util::init();
     vga::clear_screen();
     println!("Hello World! {}", 5*5);
     
-    util::set_bits_init();
-    memory::init(multiboot_information_address);
+    gdt::init();
 
-    unsafe {
-        HEAP_ALLOCATOR.lock().init(crate::memory::HEAP_START as *mut u8, crate::memory::HEAP_START + crate::memory::HEAP_SIZE);
-    }
+    pit::init();
+    memory::init(multiboot_addr);
+    // let mut memory_controller = memory::init(multiboot_addr);
+    // interrupts::init(); // &mut memory_controller
+    // x86_64::instructions::interrupts::int3();
 
-    use alloc::vec::Vec;
-    let vec: Vec<i32> = (1..=1000).collect();
-    println!("{:?}", vec);
+
+    // unsafe {
+    //     HEAP_ALLOCATOR.lock().init(memory::HEAP_START as *mut u8, memory::HEAP_START + memory::HEAP_SIZE);
+    // }
+    
+    // double fault
+    // unsafe { *(0xdeadbeaf as *mut u64) = 42; };
+
+    // use alloc::vec::Vec;
+    // let vec: Vec<i32> = (1..=1000).collect();
+    // println!("{:?}", vec);
     
     println!("It did not crash!");
-    loop{ x86_64::instructions::hlt(); }
+
+    // use core::sync::atomic;
+    let mut i = 0;
+    loop{
+        // println!("Tick: {:?}", pit::SYSTEM_TICKS.load(atomic::Ordering::SeqCst));
+        // println!("Tick {}", i);
+        // i += 1; 
+        x86_64::instructions::hlt(); 
+    }
 }
 
 use core::panic::PanicInfo;

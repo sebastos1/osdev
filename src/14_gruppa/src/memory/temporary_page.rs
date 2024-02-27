@@ -1,4 +1,4 @@
-use super::entry::EntryFlags;
+use crate::memory::EntryFlags;
 use crate::memory::table::{Table, Level1};
 use crate::memory::{Frame, FrameAllocator};
 use crate::memory::{Page, ActivePageTable, VirtualAddress};

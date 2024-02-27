@@ -1,28 +1,33 @@
 use core::arch::asm;
 pub use self::entry::*;
+use multiboot2::ElfSection;
 pub use self::mapper::Mapper;
 use multiboot2::BootInformation;
 use core::ops::{Deref, DerefMut};
 use self::temporary_page::TemporaryPage;
 use frame_allocator::{Frame, FrameAllocator};
+use crate::memory::page::{Page, PageIter, ActivePageTable};
+use crate::memory::page::InactivePageTable;
 
 mod entry;
-mod table;
-mod mapper;
-mod temporary_page;
-pub mod heap_allocator;
 pub mod frame_allocator;
+pub mod heap_allocator;
+mod mapper;
+mod page;
+mod stack_allocator;
+mod table;
+mod temporary_page;
 
 const ENTRY_COUNT: usize = 512;
-
-pub type PhysicalAddress = usize;
-pub type VirtualAddress = usize;
 
 pub const HEAP_START: usize = 0o_000_001_000_000_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 pub const PAGE_SIZE: usize = 4096;
 
-pub fn init(multiboot_information_address: usize) {
+pub type PhysicalAddress = usize;
+pub type VirtualAddress = usize;
+
+pub fn init(multiboot_information_address: usize) { // -> MemoryController<'static>
     let boot_info = unsafe { 
         multiboot2::BootInformation::load(
             multiboot_information_address as *const multiboot2::BootInformationHeader
@@ -47,172 +52,44 @@ pub fn init(multiboot_information_address: usize) {
     let heap_end_page = Page::containing_address(HEAP_START + HEAP_SIZE - 1);
 
     for page in Page::range_inclusive(heap_start_page, heap_end_page) {
-        active_table.map(page, entry::EntryFlags::WRITABLE, &mut frame_allocator);
+        active_table.map(page, EntryFlags::WRITABLE, &mut frame_allocator);
     }
-
-
-    // unsafe {
-    //     HEAP_ALLOCATOR.lock().init(HEAP_START, HEAP_START + HEAP_SIZE);
-    // }
-    // use crate::paging::Page;    
-
-    // let heap_start_page = Page::containing_address(HEAP_START);
-    // let heap_end_page = Page::containing_address(HEAP_START + HEAP_SIZE-1);
-
-    // for page in Page::range_inclusive(heap_start_page, heap_end_page) {
-    //     active_table.map(page, paging::EntryFlags::WRITABLE, &mut frame_allocator);
-    // }
-
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Page {
-   number: usize,
+bitflags! {
+    #[derive(Clone)]
+    pub struct EntryFlags: u64 {
+        const PRESENT =         1 << 0;
+        const WRITABLE =        1 << 1;
+        const USER_ACCESSIBLE = 1 << 2;
+        const WRITE_THROUGH =   1 << 3;
+        const NO_CACHE =        1 << 4;
+        const ACCESSED =        1 << 5;
+        const DIRTY =           1 << 6;
+        const HUGE_PAGE =       1 << 7;
+        const GLOBAL =          1 << 8;
+        const NO_EXECUTE =      1 << 63;
+    }
 }
+impl EntryFlags {
+    pub fn from_elf_section_flags(section: &ElfSection) -> EntryFlags {
+        use multiboot2::ElfSectionFlags;
+        let mut flags = EntryFlags::empty();
 
-impl Page {
-    pub fn containing_address(address: VirtualAddress) -> Page {
-        assert!(address < 0x0000_8000_0000_0000 ||
-            address >= 0xffff_8000_0000_0000,
-            "invalid address: 0x{:x}", address);
-        Page { number: address / PAGE_SIZE }
-    }
-
-    fn start_address(&self) -> usize {
-        self.number * PAGE_SIZE
-    }
-
-    fn p4_index(&self) -> usize {
-        (self.number >> 27) & 0o777
-    }
-    fn p3_index(&self) -> usize {
-        (self.number >> 18) & 0o777
-    }
-    fn p2_index(&self) -> usize {
-        (self.number >> 9) & 0o777
-    }
-    fn p1_index(&self) -> usize {
-        (self.number >> 0) & 0o777
-    }
-
-    pub fn range_inclusive(start: Page, end: Page) -> PageIter {
-        PageIter {
-            start: start,
-            end: end,
+        if section.flags().contains(ElfSectionFlags::ALLOCATED) {
+            flags = flags | EntryFlags::PRESENT;
         }
-    }
-}
-
-pub struct PageIter {
-    start: Page,
-    end: Page,
-}
-
-impl Iterator for PageIter {
-    type Item = Page;
-
-    fn next(&mut self) -> Option<Page> {
-        if self.start <= self.end {
-            let page = self.start;
-            self.start.number += 1;
-            Some(page)
-        } else {
-            None
+        if section.flags().contains(ElfSectionFlags::WRITABLE) {
+            flags = flags | EntryFlags::WRITABLE;
         }
-    }
-}
-
-pub struct ActivePageTable {
-    mapper: Mapper,
-}
-
-impl Deref for ActivePageTable {
-    type Target = Mapper;
-
-    fn deref(&self) -> &Mapper {
-        &self.mapper
-    }
-}
-
-impl DerefMut for ActivePageTable {
-    fn deref_mut(&mut self) -> &mut Mapper {
-        &mut self.mapper
-    }
-}
-
-impl ActivePageTable {
-    unsafe fn new() -> ActivePageTable {
-        ActivePageTable {
-            mapper: Mapper::new(),
+        if !section.flags().contains(ElfSectionFlags::EXECUTABLE) {
+            flags = flags | EntryFlags::NO_EXECUTE;
         }
-    }
-
-    pub fn with<F>(
-        &mut self,
-        table: &mut InactivePageTable,
-        temporary_page: &mut temporary_page::TemporaryPage,
-        f: F
-    ) where F: FnOnce(&mut Mapper) 
-    {
-        use x86_64::instructions::tlb;
-
-        {
-            let cr3_value: usize;
-            unsafe { asm!("mov {}, cr3", out(reg) cr3_value); } // read Cr3 register
-            let backup = Frame::containing_address(cr3_value);
-
-            // map temporary_page to current p4 table
-            let p4_table = temporary_page.map_table_frame(backup.clone(), self);
-
-            // overwrite recursive mapping
-            self.p4_mut()[511].set(table.p4_frame.clone(), EntryFlags::PRESENT | EntryFlags::WRITABLE);
-            tlb::flush_all();
-
-            // execute f in the new context
-            f(self);
-
-            // restore recursive mapping to original p4 table
-            p4_table[511].set(backup, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-            tlb::flush_all();
-        }
-
-        temporary_page.unmap(self);
-    }
-
-    pub fn switch(&mut self, new_table: InactivePageTable) -> InactivePageTable {
-
-        let cr3_value: usize;
-        unsafe { asm!("mov {}, cr3", out(reg) cr3_value); }
-
-        let old_table = InactivePageTable {
-            p4_frame: Frame::containing_address(cr3_value),
-        };
-        let new_cr3_value = new_table.p4_frame.start_address();
-        unsafe {
-            asm!("mov cr3, {}", in(reg) new_cr3_value, options(nostack));
-        }
-        old_table
+        flags
     }
 }
 
-pub struct InactivePageTable {
-    p4_frame: Frame,
-}
 
-impl InactivePageTable {
-    pub fn new(
-            frame: Frame,
-            active_table: &mut ActivePageTable,
-            temporary_page: &mut TemporaryPage
-    ) -> InactivePageTable {
-        let table = temporary_page.map_table_frame(frame.clone(), active_table);
-        table.zero();
-        table[511].set(frame.clone(), EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        temporary_page.unmap(active_table);
-
-        InactivePageTable { p4_frame: frame }
-    }
-}
 
 pub fn remap_the_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> ActivePageTable
     where A: FrameAllocator

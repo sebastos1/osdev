@@ -1,8 +1,15 @@
 use core::ptr::NonNull;
-use crate::memory::entry::*;
-use crate::memory::table::{self, Table, Level4};
-use crate::memory::{PAGE_SIZE, Frame, FrameAllocator};
-use crate::memory::{VirtualAddress, PhysicalAddress, Page, ENTRY_COUNT};
+use crate::memory::{
+    Page, 
+    Frame, 
+    PAGE_SIZE, 
+    EntryFlags, 
+    ENTRY_COUNT,
+    FrameAllocator, 
+    VirtualAddress, 
+    PhysicalAddress, 
+    table::{self, Table, Level4}
+};
 
 pub struct Mapper {
     p4: NonNull<Table<Level4>>,

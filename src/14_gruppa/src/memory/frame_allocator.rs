@@ -1,6 +1,5 @@
 use multiboot2::MemoryArea;
-use crate::memory::PAGE_SIZE;
-use crate::memory::PhysicalAddress;
+use crate::memory::{PAGE_SIZE, PhysicalAddress};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Frame {

@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-pub fn set_bits_init() {
+pub fn init() {
     enable_nxe_bit();
     enable_write_protect_bit();
 }

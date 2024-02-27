@@ -17,7 +17,6 @@ impl BumpAllocator {
         }
     }
 }
-
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         loop {

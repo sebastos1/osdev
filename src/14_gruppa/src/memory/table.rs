@@ -1,5 +1,6 @@
 use crate::memory::Entry;
 use crate::memory::entry::*;
+use crate::memory::EntryFlags;
 use core::marker::PhantomData;
 use crate::memory::ENTRY_COUNT;
 use core::ops::{Index, IndexMut};

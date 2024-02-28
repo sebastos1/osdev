@@ -54,6 +54,10 @@ pub extern fn rust_main(multiboot_addr: usize) {
     // println!("Invoking double fault now!");
     // unsafe { *(0xdeadbeef as *mut u64) = 42; };
 
+    // page fault
+    let ptr = 0xdeadbeaf as *mut u8;
+    unsafe { *ptr = 42; }
+
     pit::play_melody();
 
     use core::sync::atomic::Ordering;

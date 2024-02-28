@@ -39,7 +39,7 @@ pub extern fn rust_main(multiboot_addr: usize) {
     let mut memory_controller = memory::init();
     unsafe { HEAP_ALLOCATOR.lock().init(crate::memory::HEAP_START as *mut u8, crate::memory::HEAP_START + crate::memory::HEAP_SIZE); }
 
-    // pit::init(); // sets tick speed to 100hz
+    pit::init(); // sets tick speed to 100hz
 
     idt::init(&mut memory_controller);
 
@@ -54,10 +54,12 @@ pub extern fn rust_main(multiboot_addr: usize) {
     // println!("Invoking double fault now!");
     // unsafe { *(0xdeadbeef as *mut u64) = 42; };
 
+    pit::play_melody();
+
     use core::sync::atomic::Ordering;
     println!("It did not crash!");
     loop{
-        println!("System tick: {}", pit::SYSTEM_TICKS.load(Ordering::SeqCst));
+        // println!("System tick: {}", pit::SYSTEM_TICKS.load(Ordering::SeqCst));
         x86_64::instructions::hlt(); 
     }
 }

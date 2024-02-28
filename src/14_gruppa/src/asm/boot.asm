@@ -7,9 +7,9 @@ header_start:
     dd 0                         ; Architecture (0 for i386 protected mode)
     dd header_end - header_start ; Header length
     dd 0x100000000 - (0xe85250d6 + (header_end - header_start)) ; Checksum
-    dw 0    ; End tag type
-    dw 0    ; End tag flags
-    dd 8    ; End tag size
+    dw 0                         ; End tag type
+    dw 0                         ; End tag flags
+    dd 8                         ; End tag size
 header_end:
 
 section .text
@@ -111,16 +111,16 @@ error:
 
 bits 64
 long_mode:
-    xor ax, ax                    ; Zero out segment registers
+    xor ax, ax                   ; Zero out segment registers
     mov ss, ax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
 
-    call rust_main                ; Call Rust main function
+    call rust_main               ; Call Rust main function
 
-    mov rax, 0x2f592f412f4b2f4f   ; 'OKAY'
+    mov rax, 0x2f592f412f4b2f4f  ; 'OKAY'
     mov qword [0xb8000], rax
     hlt
 

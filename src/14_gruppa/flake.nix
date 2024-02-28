@@ -30,7 +30,6 @@
             just
             grub2
             xorriso
-            pavucontrol
           ];
         };
       }

@@ -48,22 +48,22 @@ pub trait FrameAllocator {
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
-pub struct AreaFrameAllocator<'a> {
+pub struct AreaFrameAllocator {
     next_free_frame: Frame,
-    current_area: Option<&'a MemoryArea>,
-    memory_areas: &'a [MemoryArea],
+    current_area: Option<&'static MemoryArea>,
+    memory_areas: &'static [MemoryArea],
     kernel_start: Frame,
     kernel_end: Frame,
     multiboot_start: Frame,
     multiboot_end: Frame,
 }
-impl AreaFrameAllocator<'_> {
+impl AreaFrameAllocator {
     pub fn new(
         kernel_start: usize, 
         kernel_end: usize,
         multiboot_start: usize, 
         multiboot_end: usize,
-        memory_areas: &[MemoryArea]
+        memory_areas: &'static [MemoryArea]
     ) -> AreaFrameAllocator {
         let mut allocator = AreaFrameAllocator {
             next_free_frame: Frame::containing_address(0),
@@ -92,7 +92,7 @@ impl AreaFrameAllocator<'_> {
         }
     }
 }
-impl FrameAllocator for AreaFrameAllocator<'_> {
+impl FrameAllocator for AreaFrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame> {
         while let Some(area) = self.current_area {
             let frame = Frame { number: self.next_free_frame.number };

@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(asm_const)]
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 
@@ -14,11 +15,15 @@ mod pit;
 mod gdt;
 mod util;
 mod memory;
-mod interrupts;
+mod idt;
 
 use linked_list_allocator::LockedHeap;
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+use multiboot2::BootInformation;
+use spin::Once;
+static BOOT_INFO: Once<BootInformation> = Once::new();
 
 #[no_mangle]
 pub extern fn rust_main(multiboot_addr: usize) {
@@ -26,33 +31,36 @@ pub extern fn rust_main(multiboot_addr: usize) {
     vga::clear_screen();
     println!("Hello World! {}", 5*5);
     
-    // gdt::init();
-    // pit::init();
-
-    memory::init(multiboot_addr);
-    // let mut memory_controller = memory::init(multiboot_addr);
-    interrupts::init(); // &mut memory_controller
-    x86_64::instructions::interrupts::int3();
-
-
-    // unsafe {
-    //     HEAP_ALLOCATOR.lock().init(memory::HEAP_START as *mut u8, memory::HEAP_START + memory::HEAP_SIZE);
-    // }
+    gdt::init();
     
-    // double fault
-    unsafe { *(0xdeadbeaf as *mut u64) = 42; };
+
+    let boot_info = unsafe { 
+        multiboot2::BootInformation::load(multiboot_addr as *const multiboot2::BootInformationHeader).unwrap() 
+    };
+
+    BOOT_INFO.call_once(|| boot_info);
+
+    let mut memory_controller = memory::init();
+    unsafe { HEAP_ALLOCATOR.lock().init(crate::memory::HEAP_START as *mut u8, crate::memory::HEAP_START + crate::memory::HEAP_SIZE); }
+
+    idt::init(&mut memory_controller); // &mut memory_controller
 
     // use alloc::vec::Vec;
     // let vec: Vec<i32> = (1..=1000).collect();
     // println!("{:?}", vec);
+
+    // pit::init();
+
+    // breakpoint
+    // x86_64::instructions::interrupts::int3();
     
+    // double fault
+    // unsafe { *(0xdeadbeaf as *mut u64) = 42; };
+
     println!("It did not crash!");
 
-    use core::sync::atomic;
-    let mut i = 0;
     loop{
-        // println!("Tick: {:?}", pit::SYSTEM_TICKS.load(atomic::Ordering::SeqCst));
-        // x86_64::instructions::hlt(); 
+        x86_64::instructions::hlt(); 
     }
 }
 

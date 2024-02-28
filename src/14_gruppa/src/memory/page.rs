@@ -8,6 +8,7 @@ use crate::memory::temporary_page;
 use core::arch::asm;
 use crate::memory::VirtualAddress;
 use core::ops::DerefMut;
+use core::ops::Add;
 
 // page, pageiter, active/inactive pagetable
 
@@ -46,6 +47,14 @@ impl Page {
         }
     }
 }
+impl Add<usize> for Page {
+    type Output = Page;
+
+    fn add(self, rhs: usize) -> Page {
+        Page { number: self.number + rhs }
+    }
+}
+
 
 #[derive(Clone)]
 pub struct PageIter {

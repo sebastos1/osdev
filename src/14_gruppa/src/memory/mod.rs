@@ -27,12 +27,9 @@ pub const PAGE_SIZE: usize = 4096;
 pub type PhysicalAddress = usize;
 pub type VirtualAddress = usize;
 
-pub fn init(multiboot_information_address: usize) { // -> MemoryController<'static>
-    let boot_info = unsafe { 
-        multiboot2::BootInformation::load(
-            multiboot_information_address as *const multiboot2::BootInformationHeader
-        ).unwrap() 
-    };
+pub fn init() -> MemoryController {
+    let boot_info = crate::BOOT_INFO.wait().expect("BootInformation not initialized");
+
     let memory_map_tag = boot_info.memory_map_tag().expect("Memory map tag required");
     let elf_sections = boot_info.elf_sections().expect("elf sections required");
     let kernel_start = elf_sections.clone().map(|s| s.start_address()).min().unwrap();
@@ -54,7 +51,41 @@ pub fn init(multiboot_information_address: usize) { // -> MemoryController<'stat
     for page in Page::range_inclusive(heap_start_page, heap_end_page) {
         active_table.map(page, EntryFlags::WRITABLE, &mut frame_allocator);
     }
+
+    let stack_allocator = {
+        let stack_alloc_start = heap_end_page + 1;
+        let stack_alloc_end = stack_alloc_start + 100;
+        let stack_alloc_range = Page::range_inclusive(stack_alloc_start, stack_alloc_end);
+        stack_allocator::StackAllocator::new(stack_alloc_range)
+    };
+
+    MemoryController {
+        active_table: active_table,
+        frame_allocator: frame_allocator,
+        stack_allocator: stack_allocator,
+    }
 }
+
+// move this somewhere neater
+pub use self::stack_allocator::Stack;
+
+pub struct MemoryController {
+    active_table: self::page::ActivePageTable,
+    frame_allocator: self::frame_allocator::AreaFrameAllocator,
+    stack_allocator: stack_allocator::StackAllocator,
+}
+
+impl MemoryController {
+    pub fn alloc_stack(&mut self, size_in_pages: usize) -> Option<Stack> {
+        let &mut MemoryController { 
+            ref mut active_table,
+            ref mut frame_allocator,
+            ref mut stack_allocator
+        } = self;
+        stack_allocator.alloc_stack(active_table, frame_allocator, size_in_pages)
+    }
+}
+
 
 bitflags! {
     #[derive(Clone)]

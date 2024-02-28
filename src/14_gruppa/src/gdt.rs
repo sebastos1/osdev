@@ -1,144 +1,101 @@
-use core::mem::size_of;
-use lazy_static::lazy_static;
-use core::arch::{asm, global_asm};
+use x86_64::structures::tss::TaskStateSegment;
+use x86_64::structures::gdt::SegmentSelector;
+use x86_64::PrivilegeLevel;
+use spin::Once;
+use x86_64::VirtAddr;
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
-struct GdtEntry {
-    limit_low: u16,
-    base_low: u16,
-    base_middle: u8,
-    access: u8,
-    granularity: u8,
-    base_high: u8,
-}
+pub static TSS: Once<TaskStateSegment> = Once::new();
+pub static GDT: Once<Gdt> = Once::new();
 
-impl GdtEntry {
-    fn new(base: u32, limit: u32, access: u8, granularity: u8) -> Self {
-        GdtEntry {
-            limit_low: (limit & 0xFFFF) as u16,
-            base_low: (base & 0xFFFF) as u16,
-            base_middle: ((base >> 16) & 0xFF) as u8,
-            access,
-            granularity: ((limit >> 16) & 0x0F) as u8 | (granularity & 0xF0),
-            base_high: ((base >> 24) & 0xFF) as u8,
-        }
+pub static DOUBLE_FAULT_IST_INDEX: usize = 0;
+
+bitflags! {
+    struct DescriptorFlags: u64 {
+        const CONFORMING        = 1 << 42;
+        const EXECUTABLE        = 1 << 43;
+        const USER_SEGMENT      = 1 << 44;
+        const PRESENT           = 1 << 47;
+        const LONG_MODE         = 1 << 53;
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
-struct TssEntry {
-    part1: GdtEntry, // Lower 32 bits of base address, segment limit, access rights, and flags
-    base_upper: u32, // Upper 32 bits of base address
-    reserved: u32,   // Typically 0
+pub struct Gdt {
+    table: [u64; 8],
+    next_free: usize,
 }
-
-impl TssEntry {
-    fn new(base: u64, limit: u32) -> Self {
-        TssEntry {
-            part1: GdtEntry::new(base as u32, limit, 0x89, 0x00),
-            base_upper: (base >> 32) as u32,
-            reserved: 0,
+impl Gdt {
+    pub fn new() -> Gdt {
+        Gdt {
+            table: [0; 8],
+            next_free: 1,
         }
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
-struct Gdtr {
-    limit: u16,
-    base: u64,
-}
+    pub fn add_entry(&mut self, entry: Descriptor) -> SegmentSelector {
+        let index = match entry {
+            Descriptor::UserSegment(value) => self.push(value),
+            Descriptor::SystemSegment(value_low, value_high) => {
+                let index = self.push(value_low);
+                self.push(value_high);
+                index
+            }
+        };
+        SegmentSelector::new(index as u16, PrivilegeLevel::Ring0)
+    }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
-pub struct TaskStateSegment {
-    reserved1: u32,
-    rsp: [u64; 3],
-    reserved2: u64,
-    ist: [u64; 7],
-    reserved3: u64,
-    reserved4: u16,
-    iomap_base: u16,
-}
+    fn push(&mut self, value: u64) -> usize {
+        if self.next_free < self.table.len() {
+            let index = self.next_free;
+            self.table[index] = value;
+            self.next_free += 1;
+            index
+        } else {
+            panic!("GDT full");
+        }
+    }
 
-static DOUBLE_FAULT_STACK: [u8; 4096] = [0; 4096];
-pub static _DOUBLE_FAULT_IST_INDEX: u16 = 1;
+    pub fn load(&'static self) {
+        use x86_64::instructions::tables::{DescriptorTablePointer, lgdt};
+        use core::mem::size_of;
 
-lazy_static! {
-    static ref TSS: TaskStateSegment = {
-        let mut tss = TaskStateSegment {
-            reserved1: 0,
-            rsp: [0; 3],
-            reserved2: 0,
-            ist: [0; 7], // Initialize all IST entries to 0
-            reserved3: 0,
-            reserved4: 0,
-            iomap_base: 0,
+        let ptr = DescriptorTablePointer {
+            base: VirtAddr::new((self.table.as_ptr() as u64).try_into().unwrap()),
+            limit: (self.table.len() * size_of::<u64>() - 1) as u16,
         };
 
-        // Set IST1 (used for double faults) to the top of the DOUBLE_FAULT_STACK
-        // Remember: Stack grows downwards, so we point to the end of the array
-        tss.ist[0] = &DOUBLE_FAULT_STACK as *const _ as u64 + DOUBLE_FAULT_STACK.len() as u64;
-
-        tss
-    };
+        unsafe { lgdt(&ptr) };
+    }
 }
 
-lazy_static! {
-    static ref GDT: ([GdtEntry; 3], TssEntry) = {
-        let tss_base = &*TSS as *const _ as u64;
-        let tss_limit = size_of::<TaskStateSegment>() as u32 - 1;
-        let tss_descriptor = TssEntry::new(tss_base, tss_limit);
-
-        let code = GdtEntry::new(0, 0xFFFF_FFFF, 0x9A, 0xA0); // 0x9A = Present, executable, read/write, accessed
-        let data = GdtEntry::new(0, 0xFFFF_FFFF, 0x92, 0xA0); // 0x92 = Present, read/write, accessed
-
-        ([GdtEntry::new(0, 0, 0, 0), code, data], tss_descriptor) // Simplified to only include TSS
-    };
+pub enum Descriptor {
+    UserSegment(u64),
+    SystemSegment(u64, u64),
 }
 
-extern "C" {
-    fn load_gdt(gdtr: *const Gdtr);
-}
+impl Descriptor {
+    pub fn kernel_code_segment() -> Descriptor {
+        let flags = DescriptorFlags::USER_SEGMENT | DescriptorFlags::PRESENT | DescriptorFlags::EXECUTABLE | DescriptorFlags::LONG_MODE;
+        Descriptor::UserSegment(flags.bits())
+    }
 
-global_asm!(".globl load_gdt", "load_gdt:", "lgdt [rdi]", "ret");
+    pub fn tss_segment(tss: &'static TaskStateSegment) -> Descriptor {
+        use core::mem::size_of;
+        use bit_field::BitField;
 
-// when we update the GDT, we want to add new entries to the GDT to ensure it doesn't reference the old entries
-pub fn init() {
-    let gdtr = Gdtr {
-        limit: (size_of::<([GdtEntry; 3], TssEntry)>() - 1) as u16,
-        base: &*GDT as *const _ as u64,
-    };
+        let ptr = tss as *const _ as u64;
 
-    unsafe {
-        load_gdt(&gdtr);
+        let mut low = DescriptorFlags::PRESENT.bits();
+        // base
+        low.set_bits(16..40, ptr.get_bits(0..24));
+        low.set_bits(56..64, ptr.get_bits(24..32));
+        // limit (the `-1` in needed since the bound is inclusive)
+        low.set_bits(0..16, (size_of::<TaskStateSegment>() - 1) as u64);
+        // type (0b1001 = available 64-bit tss)
+        low.set_bits(40..44, 0b1001);
 
-        // Use general-purpose registers to load segment selectors
-        asm!(
-            "push {code_segment}",
-            "lea rax, [rip + 1f]",
-            "push rax",
-            "retfq",
-            "1:",
-            "mov ax, {data_segment}",
-            "mov ds, ax",
-            "mov es, ax",
-            "mov fs, ax",
-            "mov gs, ax",
-            "mov ss, ax",
-            code_segment = const 0x08, // Assuming code segment is at GDT index 1 (0x08)
-            data_segment = const 0x10, // Assuming data segment is at GDT index 2 (0x10)
-            options(nostack)
-        );
+        let mut high = 0;
+        high.set_bits(0..32, ptr.get_bits(32..64));
 
-        // Load the TSS using a general-purpose register
-        asm!(
-            "mov ax, {tss_selector}",
-            "ltr ax",
-            tss_selector = const 0x18, // Assuming TSS is at GDT index 3 (0x18)
-            options(nomem)
-        );
+        Descriptor::SystemSegment(low, high)
     }
 }

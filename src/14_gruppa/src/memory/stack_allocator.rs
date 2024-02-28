@@ -53,7 +53,7 @@ impl StackAllocator {
 
 #[derive(Debug)]
 pub struct Stack {
-    _top: usize,
+    top: usize,
     _bottom: usize,
 }
 
@@ -61,13 +61,13 @@ impl Stack {
     fn new(top: usize, bottom: usize) -> Stack {
         assert!(top > bottom);
         Stack {
-            _top: top,
+            top: top,
             _bottom: bottom,
         }
     }
 
-    pub fn _top(&self) -> usize {
-        self._top
+    pub fn top(&self) -> usize {
+        self.top
     }
 
     pub fn _bottom(&self) -> usize {

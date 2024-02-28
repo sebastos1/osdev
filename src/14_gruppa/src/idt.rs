@@ -1,12 +1,9 @@
-use spin;
-use pic8259::ChainedPics;
 use lazy_static::lazy_static;
-use core::sync::atomic::Ordering;
 use crate::memory::MemoryController;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 pub fn init(memory_controller: &mut MemoryController) {
-    let double_fault_stack = memory_controller.alloc_stack(1).expect("could not allocate double fault stack");
+    let _double_fault_stack = memory_controller.alloc_stack(1).expect("could not allocate double fault stack");
     IDT.load();
 }
 

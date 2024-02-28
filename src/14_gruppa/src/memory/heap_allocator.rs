@@ -3,17 +3,17 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct BumpAllocator {
-    heap_start: usize,
+    _heap_start: usize,
     heap_end: usize,
     next: AtomicUsize,
 }
 
 impl BumpAllocator {
-    pub const fn new(heap_start: usize, heap_end: usize) -> Self {
+    pub const fn _new(_heap_start: usize, heap_end: usize) -> Self {
         Self {
-            heap_start,
+            _heap_start,
             heap_end,
-            next: AtomicUsize::new(heap_start),
+            next: AtomicUsize::new(_heap_start),
         }
     }
 }
@@ -25,7 +25,12 @@ unsafe impl GlobalAlloc for BumpAllocator {
             let alloc_end = alloc_start.saturating_add(layout.size());
 
             if alloc_end <= self.heap_end {
-                match self.next.compare_exchange(current_next, alloc_end, Ordering::Relaxed, Ordering::Relaxed) {
+                match self.next.compare_exchange(
+                    current_next,
+                    alloc_end,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => return alloc_start as *mut u8,
                     Err(_) => continue,
                 }

@@ -13,9 +13,9 @@ extern crate multiboot2;
 mod vga;
 mod pit;
 mod gdt;
+mod idt;
 mod util;
 mod memory;
-mod idt;
 
 use linked_list_allocator::LockedHeap;
 #[global_allocator]
@@ -34,16 +34,14 @@ pub extern fn rust_main(multiboot_addr: usize) {
     gdt::init();
     
 
-    let boot_info = unsafe { 
-        multiboot2::BootInformation::load(multiboot_addr as *const multiboot2::BootInformationHeader).unwrap() 
+    let boot_info = unsafe {
+        multiboot2::BootInformation::load(multiboot_addr as *const multiboot2::BootInformationHeader).unwrap()
     };
-
     BOOT_INFO.call_once(|| boot_info);
-
     let mut memory_controller = memory::init();
     unsafe { HEAP_ALLOCATOR.lock().init(crate::memory::HEAP_START as *mut u8, crate::memory::HEAP_START + crate::memory::HEAP_SIZE); }
 
-    idt::init(&mut memory_controller); // &mut memory_controller
+    idt::init(&mut memory_controller);
 
     // use alloc::vec::Vec;
     // let vec: Vec<i32> = (1..=1000).collect();
@@ -58,7 +56,6 @@ pub extern fn rust_main(multiboot_addr: usize) {
     // unsafe { *(0xdeadbeaf as *mut u64) = 42; };
 
     println!("It did not crash!");
-
     loop{
         x86_64::instructions::hlt(); 
     }

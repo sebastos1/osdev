@@ -1,7 +1,5 @@
-use crate::memory::EntryFlags;
-use crate::memory::table::{Table, Level1};
-use crate::memory::{Frame, FrameAllocator};
-use crate::memory::{Page, ActivePageTable, VirtualAddress};
+use super::{table::{Level1, Table},EntryFlags};
+use crate::memory::{ActivePageTable, Frame, FrameAllocator, Page, VirtualAddress};
 
 pub struct TemporaryPage {
     page: Page,
@@ -9,7 +7,8 @@ pub struct TemporaryPage {
 }
 impl TemporaryPage {
     pub fn new<A>(page: Page, allocator: &mut A) -> TemporaryPage
-        where A: FrameAllocator
+    where
+        A: FrameAllocator,
     {
         TemporaryPage {
             page: page,
@@ -17,13 +16,11 @@ impl TemporaryPage {
         }
     }
 
-    pub fn map(
-        &mut self,
-        frame: Frame, 
-        active_table: &mut ActivePageTable
-    ) -> VirtualAddress
-    {
-        assert!(active_table.translate_page(self.page).is_none(), "temporary page is already mapped");
+    pub fn map(&mut self, frame: Frame, active_table: &mut ActivePageTable) -> VirtualAddress {
+        assert!(
+            active_table.translate_page(self.page).is_none(),
+            "temporary page is already mapped"
+        );
         active_table.map_to(self.page, frame, EntryFlags::WRITABLE, &mut self.allocator);
         self.page.start_address()
     }
@@ -35,9 +32,8 @@ impl TemporaryPage {
     pub fn map_table_frame(
         &mut self,
         frame: Frame,
-        active_table: &mut ActivePageTable
-    ) -> &mut Table<Level1> 
-    {
+        active_table: &mut ActivePageTable,
+    ) -> &mut Table<Level1> {
         unsafe { &mut *(self.map(frame, active_table) as *mut Table<Level1>) }
     }
 }
@@ -45,7 +41,8 @@ impl TemporaryPage {
 struct TinyAllocator([Option<Frame>; 3]);
 impl TinyAllocator {
     fn new<A>(allocator: &mut A) -> TinyAllocator
-        where A: FrameAllocator
+    where
+        A: FrameAllocator,
     {
         let mut f = || allocator.allocate_frame();
         let frames = [f(), f(), f()];

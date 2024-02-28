@@ -1,16 +1,13 @@
-use crate::memory::EntryFlags;
-use crate::memory::Mapper;
-use crate::memory::Deref;
-use crate::memory::PAGE_SIZE;
-use crate::memory::Frame;
-use crate::memory::TemporaryPage;
-use crate::memory::temporary_page;
 use core::arch::asm;
-use crate::memory::VirtualAddress;
-use core::ops::DerefMut;
-use core::ops::Add;
-
-// page, pageiter, active/inactive pagetable
+use core::ops::{Add, DerefMut};
+use crate::memory::{
+    Deref,
+    Frame,
+    Mapper,
+    PAGE_SIZE,
+    VirtualAddress,
+};
+use super::{EntryFlags, temporary_page::TemporaryPage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Page {
@@ -104,7 +101,7 @@ impl ActivePageTable {
     pub fn with<F>(
         &mut self,
         table: &mut InactivePageTable,
-        temporary_page: &mut temporary_page::TemporaryPage,
+        temporary_page: &mut TemporaryPage,
         f: F
     ) where F: FnOnce(&mut Mapper) 
     {

@@ -1,15 +1,6 @@
 use core::ptr::NonNull;
-use crate::memory::{
-    Page, 
-    Frame, 
-    PAGE_SIZE, 
-    EntryFlags, 
-    ENTRY_COUNT,
-    FrameAllocator, 
-    VirtualAddress, 
-    PhysicalAddress, 
-    table::{self, Table, Level4}
-};
+use super::{EntryFlags, table::{self, Level4, Table}};
+use crate::memory::{Frame, FrameAllocator, Page, PhysicalAddress, VirtualAddress, ENTRY_COUNT, PAGE_SIZE};
 
 pub struct Mapper {
     p4: NonNull<Table<Level4>>,
@@ -31,7 +22,8 @@ impl Mapper {
 
     pub fn translate(&self, virtual_address: VirtualAddress) -> Option<PhysicalAddress> {
         let offset = virtual_address % PAGE_SIZE;
-        self.translate_page(Page::containing_address(virtual_address)).map(|frame| frame.number * PAGE_SIZE + offset)
+        self.translate_page(Page::containing_address(virtual_address))
+            .map(|frame| frame.number * PAGE_SIZE + offset)
     }
 
     pub fn translate_page(&self, page: Page) -> Option<Frame> {
@@ -44,7 +36,9 @@ impl Mapper {
                     if p3_entry.flags().contains(EntryFlags::HUGE_PAGE) {
                         assert!(start_frame.number % (ENTRY_COUNT * ENTRY_COUNT) == 0);
                         return Some(Frame {
-                            number: start_frame.number + page.p2_index() * ENTRY_COUNT + page.p1_index(),
+                            number: start_frame.number
+                                + page.p2_index() * ENTRY_COUNT
+                                + page.p1_index(),
                         });
                     }
                 }
@@ -54,7 +48,7 @@ impl Mapper {
                         if p2_entry.flags().contains(EntryFlags::HUGE_PAGE) {
                             assert!(start_frame.number % ENTRY_COUNT == 0);
                             return Some(Frame {
-                                number: start_frame.number + page.p1_index()
+                                number: start_frame.number + page.p1_index(),
                             });
                         }
                     }
@@ -69,8 +63,9 @@ impl Mapper {
             .or_else(huge_page)
     }
 
-    pub fn map_to<A>(&mut self, page: Page, frame: Frame, flags: EntryFlags,allocator: &mut A)
-        where A: FrameAllocator
+    pub fn map_to<A>(&mut self, page: Page, frame: Frame, flags: EntryFlags, allocator: &mut A)
+    where
+        A: FrameAllocator,
     {
         let p4 = self.p4_mut();
         let p3 = p4.next_table_create(page.p4_index(), allocator);
@@ -82,32 +77,36 @@ impl Mapper {
     }
 
     pub fn map<A>(&mut self, page: Page, flags: EntryFlags, allocator: &mut A)
-        where A: FrameAllocator
+    where
+        A: FrameAllocator,
     {
         let frame = allocator.allocate_frame().expect("out of memory");
         self.map_to(page, frame, flags, allocator)
     }
 
     pub fn identity_map<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A)
-        where A: FrameAllocator
+    where
+        A: FrameAllocator,
     {
         let page = Page::containing_address(frame.start_address());
         self.map_to(page, frame, flags, allocator)
     }
 
-    pub fn unmap<A>(&mut self, page: Page, allocator: &mut A)
-        where A: FrameAllocator
+    pub fn unmap<A>(&mut self, page: Page, _allocator: &mut A)
+    where
+        A: FrameAllocator,
     {
         use x86_64::instructions::tlb;
         use x86_64::VirtAddr; // change this
 
         assert!(self.translate(page.start_address()).is_some());
 
-        let p1 = self.p4_mut()
-                    .next_table_mut(page.p4_index())
-                    .and_then(|p3| p3.next_table_mut(page.p3_index()))
-                    .and_then(|p2| p2.next_table_mut(page.p2_index()))
-                    .expect("mapping code does not support huge pages");
+        let p1 = self
+            .p4_mut()
+            .next_table_mut(page.p4_index())
+            .and_then(|p3| p3.next_table_mut(page.p3_index()))
+            .and_then(|p2| p2.next_table_mut(page.p2_index()))
+            .expect("mapping code does not support huge pages");
         let _frame = p1[page.p1_index()].pointed_frame().unwrap();
         p1[page.p1_index()].set_unused();
         tlb::flush(VirtAddr::new(page.start_address() as u64));

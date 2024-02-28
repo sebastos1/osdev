@@ -1,10 +1,7 @@
-use crate::memory::Entry;
-use crate::memory::entry::*;
-use crate::memory::EntryFlags;
 use core::marker::PhantomData;
-use crate::memory::ENTRY_COUNT;
 use core::ops::{Index, IndexMut};
-use crate::memory::FrameAllocator;
+use super::{entry::Entry, EntryFlags};
+use crate::memory::{FrameAllocator, ENTRY_COUNT};
 
 pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
 
@@ -13,7 +10,10 @@ pub struct Table<L: TableLevel> {
     level: PhantomData<L>,
 }
 
-impl<L> Table<L> where L: TableLevel {
+impl<L> Table<L>
+where
+    L: TableLevel,
+{
     pub fn zero(&mut self) {
         for entry in self.entries.iter_mut() {
             entry.set_unused();
@@ -21,10 +21,14 @@ impl<L> Table<L> where L: TableLevel {
     }
 }
 
-impl<L> Table<L> where L: HierarchicalLevel {
+impl<L> Table<L>
+where
+    L: HierarchicalLevel,
+{
     fn next_table_address(&self, index: usize) -> Option<usize> {
         let entry_flags = self[index].flags();
-        if entry_flags.contains(EntryFlags::PRESENT) && !entry_flags.contains(EntryFlags::HUGE_PAGE) {
+        if entry_flags.contains(EntryFlags::PRESENT) && !entry_flags.contains(EntryFlags::HUGE_PAGE)
+        {
             let table_address = self as *const _ as usize;
             Some((table_address << 9) | (index << 12))
         } else {
@@ -45,12 +49,16 @@ impl<L> Table<L> where L: HierarchicalLevel {
     pub fn next_table_create<A>(
         &mut self,
         index: usize,
-        allocator: &mut A
+        allocator: &mut A,
     ) -> &mut Table<L::NextLevel>
-        where A: FrameAllocator
+    where
+        A: FrameAllocator,
     {
         if self.next_table(index).is_none() {
-            assert!(!self.entries[index].flags().contains(EntryFlags::HUGE_PAGE), "mapping code does not support huge pages");
+            assert!(
+                !self.entries[index].flags().contains(EntryFlags::HUGE_PAGE),
+                "mapping code does not support huge pages"
+            );
             let frame = allocator.allocate_frame().expect("no frames available");
             self.entries[index].set(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
             self.next_table_mut(index).unwrap().zero();
@@ -58,14 +66,21 @@ impl<L> Table<L> where L: HierarchicalLevel {
         self.next_table_mut(index).unwrap()
     }
 }
-impl<L> Index<usize> for Table<L> where L: TableLevel { // wtf
+impl<L> Index<usize> for Table<L>
+where
+    L: TableLevel,
+{
+    // wtf
     type Output = Entry;
 
     fn index(&self, index: usize) -> &Entry {
         &self.entries[index]
     }
 }
-impl<L> IndexMut<usize> for Table<L> where L: TableLevel {
+impl<L> IndexMut<usize> for Table<L>
+where
+    L: TableLevel,
+{
     fn index_mut(&mut self, index: usize) -> &mut Entry {
         &mut self.entries[index]
     }
@@ -84,7 +99,15 @@ impl TableLevel for Level2 {}
 impl TableLevel for Level1 {}
 
 // funny rust type hack
-pub trait HierarchicalLevel: TableLevel { type NextLevel: TableLevel; }
-impl HierarchicalLevel for Level4 { type NextLevel = Level3; }
-impl HierarchicalLevel for Level3 { type NextLevel = Level2; }
-impl HierarchicalLevel for Level2 { type NextLevel = Level1; }
+pub trait HierarchicalLevel: TableLevel {
+    type NextLevel: TableLevel;
+}
+impl HierarchicalLevel for Level4 {
+    type NextLevel = Level3;
+}
+impl HierarchicalLevel for Level3 {
+    type NextLevel = Level2;
+}
+impl HierarchicalLevel for Level2 {
+    type NextLevel = Level1;
+}

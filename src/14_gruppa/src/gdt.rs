@@ -1,7 +1,6 @@
 use core::mem::size_of;
 use lazy_static::lazy_static;
-use core::arch::global_asm;
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -35,7 +34,6 @@ struct TssEntry {
     reserved: u32,   // Typically 0
 }
 
-
 impl TssEntry {
     fn new(base: u64, limit: u32) -> Self {
         TssEntry {
@@ -66,7 +64,7 @@ pub struct TaskStateSegment {
 }
 
 static DOUBLE_FAULT_STACK: [u8; 4096] = [0; 4096];
-pub static DOUBLE_FAULT_IST_INDEX: u16 = 1;
+pub static _DOUBLE_FAULT_IST_INDEX: u16 = 1;
 
 lazy_static! {
     static ref TSS: TaskStateSegment = {
@@ -105,12 +103,7 @@ extern "C" {
     fn load_gdt(gdtr: *const Gdtr);
 }
 
-global_asm!(
-    ".globl load_gdt",
-    "load_gdt:",
-    "lgdt [rdi]",
-    "ret"
-);
+global_asm!(".globl load_gdt", "load_gdt:", "lgdt [rdi]", "ret");
 
 // when we update the GDT, we want to add new entries to the GDT to ensure it doesn't reference the old entries
 pub fn init() {
@@ -149,4 +142,3 @@ pub fn init() {
         );
     }
 }
-

@@ -1,6 +1,4 @@
-use crate::memory::{Page, ActivePageTable};
-use crate::memory::{PAGE_SIZE, FrameAllocator};
-use crate::memory::PageIter;
+use crate::memory::{Page, ActivePageTable, PAGE_SIZE, FrameAllocator, PageIter};
 
 pub struct StackAllocator {
     range: PageIter,
@@ -55,24 +53,24 @@ impl StackAllocator {
 
 #[derive(Debug)]
 pub struct Stack {
-    top: usize,
-    bottom: usize,
+    _top: usize,
+    _bottom: usize,
 }
 
 impl Stack {
     fn new(top: usize, bottom: usize) -> Stack {
         assert!(top > bottom);
         Stack {
-            top: top,
-            bottom: bottom,
+            _top: top,
+            _bottom: bottom,
         }
     }
 
-    pub fn top(&self) -> usize {
-        self.top
+    pub fn _top(&self) -> usize {
+        self._top
     }
 
-    pub fn bottom(&self) -> usize {
-        self.bottom
+    pub fn _bottom(&self) -> usize {
+        self._bottom
     }
 }

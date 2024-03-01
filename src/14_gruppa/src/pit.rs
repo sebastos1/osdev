@@ -1,13 +1,12 @@
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::AtomicU64;
+use x86_64::instructions::port::Port;
 
 pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
 
-const PIT_BASE_FREQUENCY: u32 = 1_193_182;
-const TIMER_FREQUENCY: u32 = 100; // 10ms/tick
+pub const PIT_BASE_FREQUENCY: u32 = 1_193_182;
+pub const TIMER_FREQUENCY: u32 = 100; // 10ms/tick
 
 pub fn init() {
-    use x86_64::instructions::port::Port;
-
     let divisor = PIT_BASE_FREQUENCY / TIMER_FREQUENCY;
     let low = (divisor & 0xFF) as u8;
     let high = ((divisor >> 8) & 0xFF) as u8;
@@ -22,29 +21,77 @@ pub fn init() {
     }
 }
 
+/*
+// Enum to represent different types of sound events
+enum SoundEvent {
+    PlaySound(u16),
+    StopSound,
+}
+
+// DelayEvent struct for non-blocking delays, now using SoundEvent
+struct DelayEvent {
+    start_tick: u64,
+    duration: u64,
+    event: SoundEvent,
+}
+
+lazy_static! {
+    static ref DELAY_EVENTS: Mutex<Vec<DelayEvent>> = Mutex::new(Vec::new());
+}
+
 pub fn play_melody() {
     let melody: [(u16, u64, u64); 3] = [
         (261, 1000, 1000), // 4th octave c note for 1 second with 1 second pause
-        (400, 500, 1500),
-        (100, 1500, 500),
+        (400, 500, 1500), // Example note and durations
+        (100, 1500, 500), // Example note and durations
     ];
 
-    for &(frequency, duration, pause_duration) in melody.iter() {
-        println!("playing sound of {}hz for {}ms with a {}ms pause", frequency, duration, pause_duration);
-        play_note_and_pause(frequency, duration, pause_duration);
+    let mut start_time = SYSTEM_TICKS.load(Ordering::SeqCst);
+    for &(frequency, duration, pause_duration) in &melody {
+        println!("Scheduling sound of {}Hz for {}ms with a {}ms pause", frequency, duration, pause_duration);
+        if frequency > 0 {
+            add_delay_event(DelayEvent {
+                start_tick: start_time,
+                duration,
+                event: SoundEvent::PlaySound(frequency),
+            });
+        }
+
+        start_time += duration;
+
+        if pause_duration > 0 {
+            add_delay_event(DelayEvent {
+                start_tick: start_time,
+                duration: pause_duration,
+                event: SoundEvent::StopSound,
+            });
+
+            start_time += pause_duration;
+        }
     }
 }
 
-fn play_note_and_pause(frequency: u16, duration: u64, pause_duration: u64) {
-    if frequency > 0 {
-        play_sound(frequency);
-        busy_sleep(duration);
-        stop_sound();
-    }
+fn add_delay_event(event: DelayEvent) {
+    let mut events = DELAY_EVENTS.lock();
+    events.push(event);
+}
 
-    if pause_duration > 0 {
-        busy_sleep(pause_duration);
-    }
+// Call this function periodically, e.g., from your main loop or an interrupt handler
+pub fn check_delay_events() {
+    let mut events = DELAY_EVENTS.lock();
+    let current_tick = SYSTEM_TICKS.load(Ordering::SeqCst);
+
+    events.retain(|event| {
+        if current_tick >= event.start_tick {
+            match event.event {
+                SoundEvent::PlaySound(frequency) => play_sound(frequency),
+                SoundEvent::StopSound => stop_sound(),
+            }
+            false // Event handled, remove it
+        } else {
+            true // Event not yet handled, keep it
+        }
+    });
 }
 
 fn play_sound(frequency: u16) {
@@ -75,12 +122,4 @@ fn stop_sound() {
         speaker_control.write(temp & !0x3);
     }
 }
-
-fn busy_sleep(ms: u64) {
-    let target_ticks = ms / 10;
-
-    let start_ticks = SYSTEM_TICKS.load(Ordering::SeqCst);
-    while SYSTEM_TICKS.load(Ordering::SeqCst) < start_ticks + target_ticks {
-        x86_64::instructions::hlt();
-    }
-}
+*/

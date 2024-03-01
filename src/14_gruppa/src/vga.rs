@@ -2,16 +2,20 @@ use core::fmt;
 use spin::Mutex;
 use volatile::Volatile;
 use lazy_static::lazy_static;
+use x86_64::instructions::port::Port;
 
 lazy_static! {
     pub static ref VGA_WRITER: Mutex<VgaWriter> = Mutex::new(VgaWriter::default());
 }
 
+const PROMPT_LENGTH: usize = 5;
+
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VgaColor {
-    Black, _Blue, _Green, _Cyan, _Red, _Magenta, _Brown, _LightGrey,
-    _DarkGrey, _LightBlue, _LightGreen, _LightCyan, _LightRed, _Pink, _Yellow, White,
+    Black, Blue, Green, Cyan, Red, Magenta, Brown, LightGrey,
+    DarkGrey, LightBlue, LightGreen, LightCyan, LightRed, Pink, Yellow, White,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,47 +44,100 @@ struct Buffer {
 }
 
 pub struct VgaWriter {
-    column_position: usize,
+    row: usize,
+    column: usize,
     color: VgaColorCode,
     buffer: &'static mut Buffer,
 }
 
 impl VgaWriter {
+    pub fn write_prompt(&mut self) {
+        self.color = VgaColorCode::new(VgaColor::Green, VgaColor::Black);
+        self.write_string("os $ ");
+        self.color = VgaColorCode::new(VgaColor::White, VgaColor::Black);
+    }
+
+    pub fn set_text_color(&mut self, color: VgaColor) {
+        self.color = VgaColorCode::new(color, VgaColor::Black);
+    }
+
     fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
-            _ => {
-                if self.column_position >= WIDTH {
+            byte => {
+                if self.column >= WIDTH {
                     self.new_line();
                 }
-                let row = HEIGHT - 1;
-                self.buffer.chars[row][self.column_position].write(VgaChar { character: byte, color: self.color });
-                self.column_position += 1;
+                self.write_byte_to(byte, self.row, self.column);
+                self.column += 1;
             }
         }
+    }
+
+    fn write_byte_to(&mut self, byte: u8, row: usize, column: usize) {
+        self.buffer.chars[row][column].write(VgaChar {
+            character: byte,
+            color: self.color,
+        });
     }
 
     fn write_string(&mut self, s: &str) {
         for byte in s.bytes() {
-            self.write_byte(byte)
+            match byte {
+                // printable ASCII byte or newline
+                0x20..=0x7e | b'\n' => self.write_byte(byte),
+                // not part of printable ASCII range
+                _ => {}
+            }
         }
+        self.move_cursor();
     }
 
     fn new_line(&mut self) {
-        for row in 1..HEIGHT {
-            for col in 0..WIDTH {
-                let character = self.buffer.chars[row][col].read();
-                self.buffer.chars[row - 1][col].write(character);
+        if self.row >= HEIGHT - 1 {
+            for row in 1..HEIGHT {
+                for col in 0..WIDTH {
+                    let character = self.buffer.chars[row][col].read();
+                    self.buffer.chars[row - 1][col].write(character);
+                }
             }
+            self.clear_row(HEIGHT - 1);
+        } else {
+            self.row += 1;
         }
-        self.clear_row(HEIGHT - 1);
-        self.column_position = 0;
+        self.column = 0;
     }
 
     fn clear_row(&mut self, row: usize) {
         let blank = VgaChar { character: b' ', color: self.color };
         for col in 0..WIDTH {
             self.buffer.chars[row][col].write(blank);
+        }
+    }
+
+    fn _clear_screen(&mut self) {
+        for row in 0..HEIGHT {
+            self.clear_row(row);
+        }
+    }
+
+    fn move_cursor(&self) {
+        let position = self.row * WIDTH + self.column;
+        let mut cursor_control = Port::<u8>::new(0x3D4);
+        let mut cursor_register = Port::<u8>::new(0x3D5);
+        unsafe {
+            cursor_control.write(0x0F);
+            cursor_register.write((position & 0xFF) as u8);
+            cursor_control.write(0x0E);
+            cursor_register.write(((position >> 8) & 0xFF) as u8);
+        }
+    }
+
+    pub fn delete_character(&mut self) {
+        if self.column > PROMPT_LENGTH {
+            self.column -= 1;
+            self.write_byte_to(b' ', self.row, self.column);
+            self.move_cursor();
         }
     }
 }
@@ -95,7 +152,8 @@ impl fmt::Write for VgaWriter {
 impl Default for VgaWriter {
     fn default() -> Self {
         Self {
-            column_position: 0,
+            column: 0,
+            row: 0,
             color: VgaColorCode::new(VgaColor::White, VgaColor::Black),
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
         }

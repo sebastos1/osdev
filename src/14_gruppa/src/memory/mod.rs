@@ -86,7 +86,6 @@ impl MemoryController {
             ref mut frame_allocator,
             ref mut stack_allocator,
         } = self;
-        println!("Allocating stack: {:?}", size_in_pages);
         stack_allocator.alloc_stack(active_table, frame_allocator, size_in_pages)
     }
 }

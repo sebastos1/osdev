@@ -48,10 +48,29 @@ pub extern fn rust_main(multiboot_addr: usize) {
 
     console::init();
 
+    tests();
+
     let mut executor = Executor::new();
     executor.spawn(Task::new(keyboard::print_keypresses()));
     // executor.spawn(Task::new(example_task())); 
     executor.run();
+}
+
+fn tests() {
+    // use alloc::vec::Vec;
+    // let big_vec: Vec<i32> = (1..=1000).collect();
+    // println!("big_vec {:?}", big_vec);
+
+    // breakpoint
+    // x86_64::instructions::interrupts::int3();
+    
+    // double fault
+    // println!("Invoking double fault now!");
+    // unsafe { *(0xdeadbeef as *mut u64) = 42; };
+
+    // page fault
+    // let ptr = 0xdeadbeaf as *mut u8;
+    // unsafe { *ptr = 42; }
 }
 
 #[allow(unused)]

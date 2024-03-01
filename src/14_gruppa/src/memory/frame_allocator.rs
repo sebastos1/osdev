@@ -1,128 +1,101 @@
 use multiboot2::MemoryArea;
 use crate::memory::{PhysicalAddress, PAGE_SIZE};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Frame {
     pub number: usize,
 }
+
 impl Frame {
-    pub fn containing_address(address: usize) -> Frame {
-        Frame {
-            number: address / PAGE_SIZE,
-        }
+    // Calculates the frame containing the given address.
+    pub fn containing_address(address: usize) -> Self {
+        Frame { number: address / PAGE_SIZE }
     }
 
+    // Returns the starting physical address of the frame.
     pub fn start_address(&self) -> PhysicalAddress {
         self.number * PAGE_SIZE
     }
 
-    pub fn clone(&self) -> Frame {
-        Frame {
-            number: self.number,
-        }
+    // Generates a range of frames from start to end.
+    pub fn range_inclusive(start: Frame, end: Frame) -> impl Iterator<Item = Frame> {
+        (start.number..=end.number).map(Frame::from_number)
     }
 
-    pub fn range_inclusive(start: Frame, end: Frame) -> FrameIter {
-        FrameIter { start, end }
-    }
-}
-
-pub struct FrameIter {
-    start: Frame,
-    end: Frame,
-}
-impl Iterator for FrameIter {
-    type Item = Frame;
-
-    fn next(&mut self) -> Option<Frame> {
-        if self.start > self.end {
-            return None;
-        }
-        let frame = self.start.clone();
-        self.start.number += 1;
-        Some(frame)
+    // Helper to create a frame from a frame number.
+    fn from_number(number: usize) -> Self {
+        Frame { number }
     }
 }
 
+// Trait defining operations for frame allocation.
 pub trait FrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame>;
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
+// Allocator that manages frames based on memory areas.
 pub struct AreaFrameAllocator {
     next_free_frame: Frame,
-    current_area: Option<&'static MemoryArea>,
     memory_areas: &'static [MemoryArea],
     kernel_start: Frame,
     kernel_end: Frame,
     multiboot_start: Frame,
     multiboot_end: Frame,
 }
+
 impl AreaFrameAllocator {
+    // Initializes a new frame allocator with the specified kernel and multiboot memory areas.
     pub fn new(
-        kernel_start: usize,
-        kernel_end: usize,
-        multiboot_start: usize,
-        multiboot_end: usize,
+        kernel_start: usize, kernel_end: usize,
+        multiboot_start: usize, multiboot_end: usize,
         memory_areas: &'static [MemoryArea],
-    ) -> AreaFrameAllocator {
+    ) -> Self {
         let mut allocator = AreaFrameAllocator {
             next_free_frame: Frame::containing_address(0),
-            current_area: None,
-            memory_areas: memory_areas,
+            memory_areas,
             kernel_start: Frame::containing_address(kernel_start),
             kernel_end: Frame::containing_address(kernel_end),
             multiboot_start: Frame::containing_address(multiboot_start),
             multiboot_end: Frame::containing_address(multiboot_end),
         };
-        allocator.choose_next_area();
+        allocator.choose_next_area(); // Chooses the first valid memory area to allocate frames from.
         allocator
     }
 
+    // Selects the next usable memory area that has not been allocated yet.
     fn choose_next_area(&mut self) {
-        self.current_area = self
-            .memory_areas
-            .iter()
-            .filter(|area| {
-                let address = area.start_address() + area.size() - 1;
-                Frame::containing_address(address as usize) >= self.next_free_frame
+        let start_frame = &self.next_free_frame;
+        self.next_free_frame = self.memory_areas.iter()
+            .filter_map(|area| {
+                let end_address = area.start_address() as usize + area.size() as usize - 1;
+                let end_frame = Frame::containing_address(end_address);
+                if end_frame >= *start_frame { Some(Frame::containing_address(area.start_address() as usize)) } else { None }
             })
-            .min_by_key(|area| area.start_address());
-
-        if let Some(area) = self.current_area {
-            let start_frame = Frame::containing_address(area.start_address() as usize);
-            if self.next_free_frame < start_frame {
-                self.next_free_frame = start_frame;
-            }
-        }
+            .min().unwrap_or(start_frame.clone());
     }
 }
+
 impl FrameAllocator for AreaFrameAllocator {
+    // Allocates the next free frame if available.
     fn allocate_frame(&mut self) -> Option<Frame> {
-        while let Some(area) = self.current_area {
-            let frame = Frame {
-                number: self.next_free_frame.number,
-            };
-            let current_area_last_frame =
-                Frame::containing_address(area.start_address() as usize + area.size() as usize - 1);
-
-            if frame > current_area_last_frame {
-                self.choose_next_area();
-                continue;
+        while let Some(frame) = (self.next_free_frame.number..).find_map(|n| {
+            let frame = Frame::from_number(n);
+            // Check if the frame is outside the reserved kernel and multiboot areas
+            if (frame < self.kernel_start || frame > self.kernel_end) &&
+               (frame < self.multiboot_start || frame > self.multiboot_end) {
+                Some(frame)
+            } else {
+                None
             }
-
-            if frame >= self.kernel_start && frame <= self.kernel_end
-                || frame >= self.multiboot_start && frame <= self.multiboot_end
-            {
-                self.next_free_frame.number += 1;
-                continue;
-            }
-
-            self.next_free_frame.number += 1;
+        }) {
+            // Move to the next frame for future allocations
+            self.next_free_frame = Frame::from_number(frame.number + 1);
             return Some(frame);
         }
         None
     }
+
     fn deallocate_frame(&mut self, _frame: Frame) {
         unimplemented!()
     }

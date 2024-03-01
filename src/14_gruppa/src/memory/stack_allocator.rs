@@ -1,76 +1,71 @@
-use crate::memory::{Page, ActivePageTable, PAGE_SIZE, FrameAllocator, PageIter};
+use crate::memory::{Page, ActivePageTable, PAGE_SIZE, FrameAllocator, PageIter, EntryFlags};
 
+/// Manages fixed-size stack allocations within a page range.
 pub struct StackAllocator {
-    range: PageIter,
+    range: PageIter, // Range of pages available for stack allocation.
 }
+
 impl StackAllocator {
+    /// Creates a stack allocator for a given range of pages.
     pub fn new(page_range: PageIter) -> StackAllocator {
         StackAllocator { range: page_range }
     }
-}
-impl StackAllocator {
-    pub fn alloc_stack<FA: FrameAllocator>(&mut self,
-                                           active_table: &mut ActivePageTable,
-                                           frame_allocator: &mut FA,
-                                           size_in_pages: usize)
-                                           -> Option<Stack> {
-        if size_in_pages == 0 {
-            return None; /* a zero sized stack makes no sense */
-        }
 
-        // clone the range, since we only want to change it on success
+    /// Allocates a stack of a specified size and returns it, if possible.
+    /// Includes a guard page to prevent overflow.
+    pub fn alloc_stack<FA: FrameAllocator>(
+        &mut self,
+        active_table: &mut ActivePageTable,
+        frame_allocator: &mut FA,
+        size_in_pages: usize,
+    ) -> Option<Stack> {
+        if size_in_pages == 0 { return None; } // Zero-sized stack is invalid.
+
         let mut range = self.range.clone();
+        let guard_page = range.next(); // First page is a guard page.
 
-        // try to allocate the stack pages and a guard page
-        let guard_page = range.next();
+        // Allocate stack pages based on size. Single-page stacks are handled differently.
         let stack_start = range.next();
-        let stack_end = if size_in_pages == 1 {
-            stack_start
-        } else {
-            // choose the (size_in_pages-2)th element, since index
-            // starts at 0 and we already allocated the start page
-            range.nth(size_in_pages - 2)
+        let stack_end = match size_in_pages {
+            1 => stack_start,
+            _ => range.nth(size_in_pages - 2), // For multi-page, find the end.
         };
 
         match (guard_page, stack_start, stack_end) {
-            (Some(_), Some(start), Some(end)) => {
-                // success! write back updated range
-                self.range = range;
-
-                // map stack pages to physical frames
-                for page in Page::range_inclusive(start, end) {
-                    active_table.map(page, crate::memory::EntryFlags::WRITABLE, frame_allocator);
+            (Some(_), Some(start), end) => { // Ensure at least one page and a guard page can be allocated.
+                self.range = range; // Update range on successful allocation.
+                // Map stack pages to physical frames.
+                let end_page = end.unwrap_or(start); // Single-page stack ends where it starts.
+                for page in Page::range_inclusive(start, end_page) {
+                    active_table.map(page, EntryFlags::WRITABLE, frame_allocator);
                 }
-
-                // create a new stack
-                let top_of_stack = end.start_address() + PAGE_SIZE;
-                Some(Stack::new(top_of_stack, start.start_address()))
+                // Return the stack with proper top and bottom addresses.
+                Some(Stack::new(end_page.start_address() + PAGE_SIZE, start.start_address()))
             }
-            _ => None, /* not enough pages */
+            _ => None, // Insufficient pages for the requested stack size.
         }
     }
 }
 
+/// Represents a virtual memory stack with top and bottom addresses.
 #[derive(Debug)]
+#[allow(unused)]
 pub struct Stack {
     top: usize,
-    _bottom: usize,
+    bottom: usize,
 }
 
 impl Stack {
+    /// Constructs a new Stack with given top and bottom.
     fn new(top: usize, bottom: usize) -> Stack {
-        assert!(top > bottom);
-        Stack {
-            top: top,
-            _bottom: bottom,
-        }
+        assert!(top > bottom, "Stack top must be above bottom.");
+        Stack { top, bottom }
     }
 
-    pub fn top(&self) -> usize {
-        self.top
-    }
+    /// Returns the top address of the stack.
+    pub fn top(&self) -> usize { self.top }
 
-    pub fn _bottom(&self) -> usize {
-        self._bottom
-    }
+    /// Returns the bottom address of the stack.
+    #[allow(unused)]
+    pub fn bottom(&self) -> usize { self.bottom }
 }

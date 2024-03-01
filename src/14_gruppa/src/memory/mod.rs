@@ -1,5 +1,3 @@
-use core::ops::Deref;
-use multiboot2::ElfSection;
 use crate::memory::paging::{
     EntryFlags,
     mapper::Mapper,

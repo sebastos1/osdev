@@ -5,7 +5,7 @@ use futures_util::stream::Stream;
 use futures_util::task::AtomicWaker;
 use futures_util::stream::StreamExt;
 use core::{pin::Pin, task::{Poll, Context}};
-use pc_keyboard::{KeyCode, layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 
 static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
 
@@ -59,7 +59,7 @@ impl Stream for ScancodeStream {
 
 pub async fn print_keypresses() {
     let mut scancodes = ScancodeStream::new();
-    let mut keyboard = Keyboard::new(ScancodeSet1::new(), layouts::De105Key, HandleControl::Ignore);
+    let mut keyboard = Keyboard::new(ScancodeSet1::new(), crate::task::norwegian::No105Key, HandleControl::Ignore);
 
     while let Some(scancode) = scancodes.next().await {
         if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {

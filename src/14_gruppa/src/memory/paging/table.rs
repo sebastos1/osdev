@@ -3,28 +3,28 @@ use core::ops::{Index, IndexMut};
 use super::{entry::Entry, EntryFlags};
 use crate::memory::{FrameAllocator, ENTRY_COUNT};
 
-pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
+// The top-level P4 table's fixed virtual address in a typical x86_64 system.
+pub const P4: *mut Table<Level4> = 0xffff_ffff_ffff_f000 as *mut _;
 
+// A generic page table structure for any level (P4, P3, P2, P1).
 pub struct Table<L: TableLevel> {
-    entries: [Entry; ENTRY_COUNT],
-    level: PhantomData<L>,
+    entries: [Entry; ENTRY_COUNT], // Page table entries
+    level: PhantomData<L>, // Marker to indicate the table level, does not occupy space
 }
 
-impl<L> Table<L>
-where
-    L: TableLevel,
-{
+// Common methods applicable to all table levels
+impl<L: TableLevel> Table<L> {
+    // Clears all entries in the table
     pub fn zero(&mut self) {
-        for entry in self.entries.iter_mut() {
+        for entry in &mut self.entries {
             entry.set_unused();
         }
     }
 }
 
-impl<L> Table<L>
-where
-    L: HierarchicalLevel,
-{
+// Methods specific to hierarchical levels (P4 to P1), excluding the final level (P1)
+impl<L: HierarchicalLevel> Table<L> {
+    // Calculates the address of the next-level table based on the current entry, if present
     fn next_table_address(&self, index: usize) -> Option<usize> {
         let entry_flags = self[index].flags();
         if entry_flags.contains(EntryFlags::PRESENT) && !entry_flags.contains(EntryFlags::HUGE_PAGE)
@@ -36,21 +36,20 @@ where
         }
     }
 
+    // Gets a reference to the next-level table, if present
     pub fn next_table(&self, index: usize) -> Option<&Table<L::NextLevel>> {
         self.next_table_address(index)
             .map(|address| unsafe { &*(address as *const _) })
     }
 
+    // Gets a mutable reference to the next-level table, if present
     pub fn next_table_mut(&mut self, index: usize) -> Option<&mut Table<L::NextLevel>> {
         self.next_table_address(index)
             .map(|address| unsafe { &mut *(address as *mut _) })
     }
 
-    pub fn next_table_create<A>(
-        &mut self,
-        index: usize,
-        allocator: &mut A,
-    ) -> &mut Table<L::NextLevel>
+    // Ensures the next-level table exists, creating it if necessary
+    pub fn next_table_create<A>(&mut self, index: usize, allocator: &mut A) -> &mut Table<L::NextLevel>
     where
         A: FrameAllocator,
     {
@@ -66,48 +65,37 @@ where
         self.next_table_mut(index).unwrap()
     }
 }
-impl<L> Index<usize> for Table<L>
-where
-    L: TableLevel,
-{
-    // wtf
-    type Output = Entry;
 
-    fn index(&self, index: usize) -> &Entry {
+// Allows indexing into the table's entries array
+impl<L: TableLevel> Index<usize> for Table<L> {
+    type Output = Entry;
+    fn index(&self, index: usize) -> &Self::Output {
         &self.entries[index]
     }
 }
-impl<L> IndexMut<usize> for Table<L>
-where
-    L: TableLevel,
-{
-    fn index_mut(&mut self, index: usize) -> &mut Entry {
+
+// Allows mutable indexing into the table's entries array
+impl<L: TableLevel> IndexMut<usize> for Table<L> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.entries[index]
     }
 }
 
+// Marker traits to indicate the level of a table
 pub trait TableLevel {}
-
 pub enum Level4 {}
 pub enum Level3 {}
 pub enum Level2 {}
 pub enum Level1 {}
-
 impl TableLevel for Level4 {}
 impl TableLevel for Level3 {}
 impl TableLevel for Level2 {}
 impl TableLevel for Level1 {}
 
-// funny rust type hack
+// A trait to define a relationship between table levels
 pub trait HierarchicalLevel: TableLevel {
     type NextLevel: TableLevel;
 }
-impl HierarchicalLevel for Level4 {
-    type NextLevel = Level3;
-}
-impl HierarchicalLevel for Level3 {
-    type NextLevel = Level2;
-}
-impl HierarchicalLevel for Level2 {
-    type NextLevel = Level1;
-}
+impl HierarchicalLevel for Level4 { type NextLevel = Level3; }
+impl HierarchicalLevel for Level3 { type NextLevel = Level2; }
+impl HierarchicalLevel for Level2 { type NextLevel = Level1; }

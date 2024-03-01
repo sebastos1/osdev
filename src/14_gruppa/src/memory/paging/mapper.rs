@@ -1,17 +1,21 @@
 use core::ptr::NonNull;
 use super::{EntryFlags, table::{self, Level4, Table}};
-use crate::memory::{Frame, FrameAllocator, Page, PhysicalAddress, VirtualAddress, ENTRY_COUNT, PAGE_SIZE};
+use crate::memory::{Frame, FrameAllocator, Page, PhysicalAddress, VirtualAddress, PAGE_SIZE};
 
+// Handles page table translations and modifications.
 pub struct Mapper {
     p4: NonNull<Table<Level4>>,
 }
+
 impl Mapper {
+    // Creates a new Mapper. Unsafe because it assumes the physical memory address of P4 is valid.
     pub unsafe fn new() -> Mapper {
         Mapper {
             p4: NonNull::new_unchecked(table::P4),
         }
     }
 
+    // Accessors for the P4 table, safely returning references to the P4 table.
     pub fn p4(&self) -> &Table<Level4> {
         unsafe { self.p4.as_ref() }
     }
@@ -20,97 +24,72 @@ impl Mapper {
         unsafe { self.p4.as_mut() }
     }
 
+    // Translates a virtual address to a physical address, if possible.
+    #[allow(unused)]
     pub fn translate(&self, virtual_address: VirtualAddress) -> Option<PhysicalAddress> {
         let offset = virtual_address % PAGE_SIZE;
-        self.translate_page(Page::containing_address(virtual_address))
-            .map(|frame| frame.number * PAGE_SIZE + offset)
+        self.translate_page(Page::containing_address(virtual_address)).map(|frame| frame.start_address() + offset)
     }
 
+    // Helper function to handle page translation, supporting huge pages.
     pub fn translate_page(&self, page: Page) -> Option<Frame> {
-        let p3 = self.p4().next_table(page.p4_index());
-
-        let huge_page = || {
-            p3.and_then(|p3| {
-                let p3_entry = &p3[page.p3_index()];
-                if let Some(start_frame) = p3_entry.pointed_frame() {
-                    if p3_entry.flags().contains(EntryFlags::HUGE_PAGE) {
-                        assert!(start_frame.number % (ENTRY_COUNT * ENTRY_COUNT) == 0);
-                        return Some(Frame {
-                            number: start_frame.number
-                                + page.p2_index() * ENTRY_COUNT
-                                + page.p1_index(),
-                        });
-                    }
-                }
-                if let Some(p2) = p3.next_table(page.p3_index()) {
-                    let p2_entry = &p2[page.p2_index()];
-                    if let Some(start_frame) = p2_entry.pointed_frame() {
-                        if p2_entry.flags().contains(EntryFlags::HUGE_PAGE) {
-                            assert!(start_frame.number % ENTRY_COUNT == 0);
-                            return Some(Frame {
-                                number: start_frame.number + page.p1_index(),
-                            });
-                        }
-                    }
-                }
-                None
-            })
-        };
-
-        p3.and_then(|p3| p3.next_table(page.p3_index()))
+        self.p4().next_table(page.p4_index())
+            .and_then(|p3| p3.next_table(page.p3_index()))
             .and_then(|p2| p2.next_table(page.p2_index()))
             .and_then(|p1| p1[page.p1_index()].pointed_frame())
-            .or_else(huge_page)
+            .or_else(|| self.handle_huge_pages(page))
     }
 
+    // Maps a page to a frame with the specified flags, allocating new page tables as necessary.
     pub fn map_to<A>(&mut self, page: Page, frame: Frame, flags: EntryFlags, allocator: &mut A)
-    where
-        A: FrameAllocator,
-    {
-        let p4 = self.p4_mut();
-        let p3 = p4.next_table_create(page.p4_index(), allocator);
-        let p2 = p3.next_table_create(page.p3_index(), allocator);
-        let p1 = p2.next_table_create(page.p2_index(), allocator);
-
-        assert!(p1[page.p1_index()].is_unused());
+    where A: FrameAllocator {
+        let p1 = self.navigate_to_p1_table(page, allocator);
+        assert!(p1[page.p1_index()].is_unused(), "Page already mapped");
         p1[page.p1_index()].set(frame, flags | EntryFlags::PRESENT);
     }
 
+    // High-level mapping function that allocates a frame and maps a page to it.
     pub fn map<A>(&mut self, page: Page, flags: EntryFlags, allocator: &mut A)
-    where
-        A: FrameAllocator,
-    {
-        let frame = allocator.allocate_frame().expect("out of memory");
-        self.map_to(page, frame, flags, allocator)
+    where A: FrameAllocator {
+        let frame = allocator.allocate_frame().expect("Out of memory");
+        self.map_to(page, frame, flags, allocator);
     }
 
+    // Maps a frame to the corresponding page with the same address (identity mapping).
     pub fn identity_map<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A)
-    where
-        A: FrameAllocator,
-    {
-        let page = Page::containing_address(frame.start_address());
-        self.map_to(page, frame, flags, allocator)
+    where A: FrameAllocator {
+        self.map_to(Page::containing_address(frame.start_address()), frame, flags, allocator);
     }
 
+    // Unmaps a page and flushes the corresponding TLB entry.
     pub fn unmap<A>(&mut self, page: Page, _allocator: &mut A)
-    where
-        A: FrameAllocator,
-    {
+    where A: FrameAllocator {
         use x86_64::instructions::tlb;
-        use x86_64::VirtAddr; // change this
+        use x86_64::VirtAddr;
 
-        assert!(self.translate(page.start_address()).is_some());
-
-        let p1 = self
-            .p4_mut()
-            .next_table_mut(page.p4_index())
-            .and_then(|p3| p3.next_table_mut(page.p3_index()))
-            .and_then(|p2| p2.next_table_mut(page.p2_index()))
-            .expect("mapping code does not support huge pages");
-        let _frame = p1[page.p1_index()].pointed_frame().unwrap();
+        let p1 = self.navigate_to_p1_table_mut(page).expect("Mapping code does not support huge pages");
         p1[page.p1_index()].set_unused();
         tlb::flush(VirtAddr::new(page.start_address() as u64));
-        // TODO free p(1,2,3) table if empty
-        //allocator.deallocate_frame(frame);
+    }
+
+    // Navigates through the page tables to the P1 table, creating tables if necessary.
+    fn navigate_to_p1_table<A>(&mut self, page: Page, allocator: &mut A) -> &mut Table<table::Level1>
+    where A: FrameAllocator {
+        let p3 = self.p4_mut().next_table_create(page.p4_index(), allocator);
+        let p2 = p3.next_table_create(page.p3_index(), allocator);
+        p2.next_table_create(page.p2_index(), allocator)
+    }
+
+    // Similar to `navigate_to_p1_table` but does not attempt to create missing tables.
+    fn navigate_to_p1_table_mut(&mut self, page: Page) -> Option<&mut Table<table::Level1>> {
+        self.p4_mut().next_table_mut(page.p4_index())?
+            .next_table_mut(page.p3_index())?
+            .next_table_mut(page.p2_index())
+    }
+
+    // todo, someday
+    #[allow(unused)]
+    fn handle_huge_pages(&self, page: Page) -> Option<Frame> {
+        None
     }
 }

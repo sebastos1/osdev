@@ -115,12 +115,6 @@ impl VgaWriter {
         }
     }
 
-    fn _clear_screen(&mut self) {
-        for row in 0..HEIGHT {
-            self.clear_row(row);
-        }
-    }
-
     fn move_cursor(&self) {
         let position = self.row * WIDTH + self.column;
         let mut cursor_control = Port::<u8>::new(0x3D4);

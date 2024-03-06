@@ -35,6 +35,7 @@ static BOOT_INFO: Once<BootInformation> = Once::new();
 pub extern fn rust_main(multiboot_addr: usize) {
     util::init();
     vga::clear_screen();
+    println!("Hello world! {}", 123);
     
     let boot_info = unsafe {
         multiboot2::BootInformation::load(multiboot_addr as *const multiboot2::BootInformationHeader).unwrap()

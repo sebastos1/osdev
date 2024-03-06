@@ -1,0 +1,4 @@
+build
+target
+!*.lock
+src/testing

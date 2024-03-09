@@ -1,17 +1,21 @@
 #![no_std]
+#![feature(abi_x86_interrupt)]
 
 extern crate rlibc;
 
+#[macro_use]
 mod vga;
-
-static TEST: u32 = 0xDEADBEEF;
+mod util;
+mod interrupts;
 
 #[no_mangle]
 pub extern fn rust_main() {
     vga::clear_screen();
-
-    let address = &TEST as *const u32 as usize;
-    println!("Hello world! Address: 0x{:X}", address);
+    println!("Hello world! {}", 123);
+    
+    util::init();
+    crate::interrupts::pit::init();
+    // crate::interrupts::idt::init();
     
     loop {}
 }

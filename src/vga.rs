@@ -1,5 +1,6 @@
 use core::fmt;
 use spin::Mutex;
+use crate::util::outb;
 use lazy_static::lazy_static;
 
 const VGA_WIDTH: usize = 80;
@@ -53,12 +54,10 @@ pub struct Writer {
 impl Writer {
     fn move_cursor(&self) {
         let pos = self.row * VGA_WIDTH + self.column;
-        unsafe {
-            outb(0x3D4, 0x0F);
-            outb(0x3D5, (pos & 0xFF) as u8);
-            outb(0x3D4, 0x0E);
-            outb(0x3D5, ((pos >> 8) & 0xFF) as u8);
-        }
+        outb(0x3D4, 0x0F);
+        outb(0x3D5, (pos & 0xFF) as u8);
+        outb(0x3D4, 0x0E);
+        outb(0x3D5, ((pos >> 8) & 0xFF) as u8);
     }
 
     fn write_byte(&mut self, byte: u8) {
@@ -137,14 +136,4 @@ pub fn clear_screen() {
     for _ in 0..VGA_HEIGHT {
         println!();
     }
-}
-
-// move this later on
-unsafe fn outb(port: u16, value: u8) {
-    use core::arch::asm;
-    asm!(
-        "out dx, al",
-        in("dx") port,
-        in("al") value,
-    );
 }

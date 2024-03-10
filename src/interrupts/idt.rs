@@ -1,12 +1,9 @@
 use spin;
 use core::arch::asm;
-use super::TablePointer;
 use pic8259::ChainedPics;
-use super::VirtualAddress;
 use lazy_static::lazy_static;
-use super::gdt::SegmentSelector;
-use super::gdt::{Gdt, GDT, Tss, TSS, Descriptor};
-
+use super::{TablePointer, VirtualAddress};
+use super::gdt::{Gdt, GDT, Tss, TSS, Descriptor, SegmentSelector};
 
 lazy_static! {
     static ref IDT: Idt = {
@@ -18,6 +15,8 @@ lazy_static! {
 }
 
 /*
+TODO wrap ExceptionStackFrame!
+
 extern "x86-interrupt" fn handler(stack_frame: ExceptionStackFrame) {…}
 extern "x86-interrupt" fn handler_with_err_code(stack_frame: ExceptionStackFrame, error_code: u64) {…}
 */
@@ -25,7 +24,6 @@ extern "x86-interrupt" fn handler_with_err_code(stack_frame: ExceptionStackFrame
 extern "x86-interrupt" fn breakpoint_handler() {
     println!("\nEXCEPTION: BREAKPOINT\n");
 }
-
 
 // Represents the 4 non-offset bytes of an IDT entry.
 #[repr(C)]
@@ -43,7 +41,6 @@ impl Default for EntryOptions {
         }
     }
 }
-
 
 // we always have the same cs, so we dont inlcude that here
 #[derive(Clone, Copy)]
@@ -77,7 +74,6 @@ impl IdtEntry {
         // options?
     }
 }
-
 
 #[repr(C)]
 pub struct Idt {
@@ -160,41 +156,43 @@ impl Idt {
 
 pub fn init() {
     let tss = TSS.call_once(|| {
-        let mut tss = Tss::new();
+        let mut tss = Tss::default();
         tss
     });
 
     let mut code_selector = SegmentSelector(0);
     let mut tss_selector = SegmentSelector(0);
     let gdt = GDT.call_once(|| {
-        let mut gdt = Gdt::new();
+        let mut gdt = Gdt::default();
         code_selector = gdt.add_entry(Descriptor::UserSegment(0x20980000000000)); // kernel code segment, same as from the asm code
         tss_selector = gdt.add_entry(tss.descriptor());
         gdt
     });
     gdt.load();
 
-    // this is wrong, dies
     unsafe {
         asm!(
-            "push {0:x}",
-            "lea rax, [1f + rip]",
-            "push rax",
+            "push {sel}",
+            "lea {tmp}, [1f + rip]",
+            "push {tmp}",
             "retfq",
             "1:",
-            in(reg) code_selector.0,
+            sel = in(reg) u64::from(code_selector.0),
+            tmp = lateout(reg) _,
+            options(preserves_flags),
         );
         asm!(
             "ltr {0:x}",
             in(reg) tss_selector.0,
+            options(preserves_flags),
         );
     }
-    
+
     IDT.load();
 
-    // enable interrupts
-    unsafe {
-        // PICS.lock().initialize();
-        asm!("sti", options(preserves_flags, nostack));
-    }
+    // // enable interrupts
+    // unsafe {
+    //     // PICS.lock().initialize();
+    //     asm!("sti", options(preserves_flags, nostack));
+    // }
 }

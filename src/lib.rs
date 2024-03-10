@@ -15,7 +15,7 @@ pub extern fn rust_main() {
     
     util::init();
     crate::interrupts::pit::init();
-    // crate::interrupts::idt::init();
+    crate::interrupts::idt::init();
     
     loop {}
 }

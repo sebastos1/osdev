@@ -20,9 +20,6 @@ lazy_static! {
         };
         tss
     };
-}
-
-lazy_static! {
     pub static ref GDT: (Gdt, Selectors) = {
         let mut gdt = Gdt::default();
         let cs = gdt.add_entry(Descriptor::UserSegment(0x20980000000000));

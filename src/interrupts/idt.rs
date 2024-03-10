@@ -14,7 +14,7 @@ lazy_static! {
     static ref IDT: Idt = {
         let mut idt = Idt::default();
         idt.interrupts[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);
-        idt.double_fault.set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
+        // idt.double_fault.set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
         idt
     };
 }
@@ -29,27 +29,11 @@ pub struct ExceptionStackFrame {
     pub stack_segment: u64,
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(esf: ExceptionStackFrame, _: u64) {
+extern "x86-interrupt" fn timer_interrupt_handler(_: ExceptionStackFrame) {
     SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);
+    println!(".");
     unsafe { PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer as u8); }
 }
-
-extern "x86-interrupt" fn double_fault_handler(esf: ExceptionStackFrame, _: u64) {
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", esf);
-}
-
-/*
-TODO wrap ExceptionStackFrame!
-
-extern "x86-interrupt" fn handler(stack_frame: ExceptionStackFrame) {…}
-extern "x86-interrupt" fn handler_with_err_code(stack_frame: ExceptionStackFrame, error_code: u64) {…}
-*/
-
-/*
-extern "x86-interrupt" fn breakpoint_handler(esf: ExceptionStackFrame) {
-    println!("\nEXCEPTION: BREAKPOINT\n{:?}", esf);
-}
-*/
 
 pub const PIC_OFFSET: u8 = 32;
 pub static PICS: spin::Mutex<ChainedPics> = spin::Mutex::new(unsafe { ChainedPics::new(PIC_OFFSET, (PIC_OFFSET + 8) as u8) });
@@ -61,7 +45,7 @@ pub enum InterruptIndex {
     Timer = PIC_OFFSET,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct IdtEntry {
     pointer_low: u16,
@@ -84,19 +68,21 @@ impl Default for IdtEntry {
         }
     }
 }
+use super::gdt::GDT;
 
 impl IdtEntry {
-    fn set_handler(&mut self, function: extern "x86-interrupt" fn(ExceptionStackFrame, u64)) -> &mut Self {
+    fn set_handler(&mut self, function: extern "x86-interrupt" fn(ExceptionStackFrame)) -> &mut Self {
         let address = function as u64;
         self.pointer_low = address as u16;
         self.pointer_middle = (address >> 16) as u16;
         self.pointer_high = (address >> 32) as u32;
         
-        let segment: u16;
-        unsafe {
-            asm!("mov {0:x}, cs", out(reg) segment, options(nomem, nostack, preserves_flags));
-        }
-        self.cs = SegmentSelector(segment);
+        // let mut segment: u16;
+        // unsafe {
+        //     asm!("mov {0:x}, cs", out(reg) segment, options(nomem, nostack, preserves_flags));
+        // }
+        // self.cs = SegmentSelector(segment);
+        self.cs = GDT.1.cs;
         self.bits.set_bit(15, true);
         self
     }
@@ -106,7 +92,9 @@ impl IdtEntry {
     }
 }
 
+#[derive(Clone, Debug)]
 #[repr(C)]
+#[repr(align(16))]
 pub struct Idt {
     unused_1: [IdtEntry; 3],
     breakpoint: IdtEntry,
@@ -151,6 +139,6 @@ pub fn init() {
     // enable interrupts
     unsafe {
         PICS.lock().initialize();
-        // asm!("sti", options(preserves_flags, nostack));
+        asm!("sti", options(preserves_flags, nostack));
     }
 }

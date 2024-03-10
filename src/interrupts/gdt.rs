@@ -1,4 +1,3 @@
-use spin::Once;
 use core::arch::asm;
 use bit_field::BitField; 
 use lazy_static::lazy_static;
@@ -24,7 +23,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref GDT: (Gdt, Selectors) = {
+    pub static ref GDT: (Gdt, Selectors) = {
         let mut gdt = Gdt::default();
         let cs = gdt.add_entry(Descriptor::UserSegment(0x20980000000000));
         let ts = gdt.add_entry(TSS.descriptor());
@@ -36,31 +35,6 @@ lazy_static! {
             },
         )
     };
-}
-
-pub fn init() {
-    let (gdt, selectors) = &*GDT;
-
-    gdt.load();
-
-    unsafe {
-        asm!( // set cs
-            "push {sel}",
-            "lea {tmp}, [1f + rip]",
-            "push {tmp}",
-            "retfq",
-            "1:",
-            sel = in(reg) u64::from(selectors.cs.0),
-            tmp = lateout(reg) _,
-            options(preserves_flags),
-        );
-        asm!( // load tss
-            "ltr {0:x}",
-            in(reg) selectors.ts.0,
-            options(preserves_flags),
-        );
-    }
-
 }
 
 pub enum Descriptor {
@@ -108,7 +82,7 @@ impl Tss {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct SegmentSelector(pub u16);
 
@@ -173,5 +147,29 @@ impl Gdt {
                 options(readonly, nostack, preserves_flags)
             );
         }
+    }
+}
+
+pub fn init() {
+    let (gdt, selectors) = &*GDT;
+
+    gdt.load();
+
+    unsafe {
+        asm!( // set cs
+            "push {sel}",
+            "lea {tmp}, [1f + rip]",
+            "push {tmp}",
+            "retfq",
+            "1:",
+            sel = in(reg) u64::from(selectors.cs.0),
+            tmp = lateout(reg) _,
+            options(preserves_flags),
+        );
+        asm!( // load tss
+            "ltr {0:x}",
+            in(reg) selectors.ts.0,
+            options(preserves_flags),
+        );
     }
 }

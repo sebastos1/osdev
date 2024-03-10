@@ -24,9 +24,6 @@ pub fn init() {
     idt::init();
 
     // enable interrupts
-    unsafe {
-        crate::interrupts::idt::PICS.lock().initialize();
-        core::arch::asm!("sti", options(preserves_flags, nostack));
-    }
+    unsafe { core::arch::asm!("sti", options(preserves_flags, nostack)); }
     println!("Interrupts enabled");
 }

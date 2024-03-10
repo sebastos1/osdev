@@ -1,30 +1,24 @@
 use spin;
+use spin::Once;
 use core::arch::asm;
 use bit_field::BitField;
 use pic8259::ChainedPics;
 use lazy_static::lazy_static;
+use super::gdt::SegmentSelector;
 use core::sync::atomic::Ordering;
 use core::sync::atomic::AtomicU64;
 use super::{TablePointer, VirtualAddress};
-use super::gdt::SegmentSelector;
 
 pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
-
-lazy_static! {
-    static ref IDT: Idt = {
-        let mut idt = Idt::default();
-        idt[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);
-        // idt.double_fault.set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
-        idt
-    };
-}
+pub static IDT: Once<Idt> = Once::new();
 
 #[no_mangle]
 extern "C" fn timer_interrupt_handler() {
     print!(".");
     SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);
-    unsafe {
+    unsafe { 
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer as u8);
+        asm!("sti", options(nomem, nostack, preserves_flags)); // wtf ?
     }
 }
 
@@ -57,7 +51,7 @@ impl Default for IdtEntry {
             fn_pointer_high: 0,
             cs: SegmentSelector(0),
             ist: 0, // assume no ist, use with_ist_index to set
-            flags: 0x8E, // present, interrupt gate
+            flags: 0b1110, // interrupt gate
             reserved: 0,
         }
     }
@@ -75,6 +69,7 @@ impl IdtEntry {
             asm!("mov {0:x}, cs", out(reg) segment, options(nomem, nostack, preserves_flags));
         }
         self.cs = SegmentSelector(segment);
+        self.flags |= 0b10000000;
         self
     }
 
@@ -113,7 +108,6 @@ impl Idt {
 
 impl core::ops::Index<usize> for Idt {
     type Output = IdtEntry;
-
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
@@ -126,7 +120,13 @@ impl core::ops::IndexMut<usize> for Idt {
 }
 
 pub fn init() {
-    println!("loading idt...");
-    IDT.load();
-    println!("idt loaded");
+    unsafe { PICS.lock().initialize(); }
+    let idt = IDT.call_once(|| {
+        let mut idt = Idt::default();
+        idt[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);
+        // idt.double_fault.set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
+        idt
+    });
+
+    idt.load();
 }

@@ -17,3 +17,9 @@ pub struct TablePointer {
     pub limit: u16,
     pub base: VirtualAddress,
 }
+
+pub fn init() {
+    gdt::init();
+    pit::init();
+    idt::init();
+}

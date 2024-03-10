@@ -1,10 +1,67 @@
 use spin::Once;
 use core::arch::asm;
 use bit_field::BitField; 
+use lazy_static::lazy_static;
 use super::{TablePointer, VirtualAddress};
 
-pub static GDT: Once<Gdt> = Once::new();
-pub static TSS: Once<Tss> = Once::new();
+pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+
+lazy_static! {
+    static ref TSS: Tss = {
+        let mut tss = Tss::default();
+        tss.ist[DOUBLE_FAULT_IST_INDEX as usize] = {
+            const STACK_SIZE: usize = 4096 * 5;
+            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+
+            let stack_end = unsafe {
+                let stack_start = core::ptr::addr_of!(STACK) as *const _ as u64;
+                stack_start + STACK_SIZE as u64
+            };
+            VirtualAddress(stack_end)
+        };
+        tss
+    };
+}
+
+lazy_static! {
+    static ref GDT: (Gdt, Selectors) = {
+        let mut gdt = Gdt::default();
+        let cs = gdt.add_entry(Descriptor::UserSegment(0x20980000000000));
+        let ts = gdt.add_entry(TSS.descriptor());
+        (
+            gdt,
+            Selectors {
+                cs,
+                ts,
+            },
+        )
+    };
+}
+
+pub fn init() {
+    let (gdt, selectors) = &*GDT;
+
+    gdt.load();
+
+    unsafe {
+        asm!( // set cs
+            "push {sel}",
+            "lea {tmp}, [1f + rip]",
+            "push {tmp}",
+            "retfq",
+            "1:",
+            sel = in(reg) u64::from(selectors.cs.0),
+            tmp = lateout(reg) _,
+            options(preserves_flags),
+        );
+        asm!( // load tss
+            "ltr {0:x}",
+            in(reg) selectors.ts.0,
+            options(preserves_flags),
+        );
+    }
+
+}
 
 pub enum Descriptor {
     UserSegment(u64),
@@ -62,6 +119,11 @@ impl SegmentSelector {
     pub const fn new(index: u16, rpl: u16) -> SegmentSelector {
         SegmentSelector(index << 3 | (rpl))
     }
+}
+
+pub struct Selectors {
+    pub cs: SegmentSelector,
+    pub ts: SegmentSelector,
 }
 
 pub struct Gdt {

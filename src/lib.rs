@@ -14,8 +14,7 @@ pub extern fn rust_main() {
     println!("Hello world! {}", 123);
     
     util::init();
-    crate::interrupts::pit::init();
-    crate::interrupts::idt::init();
+    crate::interrupts::init();
     
     loop {}
 }

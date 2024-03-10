@@ -1,6 +1,7 @@
 pub mod gdt;
 pub mod idt;
 pub mod pit;
+pub mod pic;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
@@ -21,6 +22,7 @@ pub struct TablePointer {
 pub fn init() {
     gdt::init();
     pit::init();
+    pic::init();
     idt::init();
 
     // enable interrupts

@@ -1,29 +1,21 @@
-use spin;
 use spin::Once;
 use core::arch::asm;
-use bit_field::BitField;
-use pic8259::ChainedPics;
-use lazy_static::lazy_static;
 use super::gdt::SegmentSelector;
 use core::sync::atomic::Ordering;
 use core::sync::atomic::AtomicU64;
+use super::pic::{PIC_OFFSET, PICS};
 use super::{TablePointer, VirtualAddress};
+use x86_64::structures::idt::InterruptStackFrame;
 
 pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
 pub static IDT: Once<Idt> = Once::new();
 
-#[no_mangle]
-extern "C" fn timer_interrupt_handler() {
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
+{
+    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst); // Increment system ticks
     print!(".");
-    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);
-    unsafe { 
-        PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer as u8);
-        asm!("sti", options(nomem, nostack, preserves_flags)); // wtf ?
-    }
+    PICS.lock().send_eoi(InterruptIndex::Timer as u8);
 }
-
-pub const PIC_OFFSET: u8 = 32;
-pub static PICS: spin::Mutex<ChainedPics> = spin::Mutex::new(unsafe { ChainedPics::new(PIC_OFFSET, (PIC_OFFSET + 8) as u8) });
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -58,7 +50,7 @@ impl Default for IdtEntry {
 }
 
 impl IdtEntry {
-    fn set_handler(&mut self, handler: extern "C" fn()) -> &mut Self {
+    fn set_handler(&mut self, handler: extern "x86-interrupt" fn(InterruptStackFrame)) -> &mut Self {
         let address = handler as u64;
         self.fn_pointer_low = address as u16;
         self.fn_pointer_middle = (address >> 16) as u16;
@@ -120,7 +112,6 @@ impl core::ops::IndexMut<usize> for Idt {
 }
 
 pub fn init() {
-    unsafe { PICS.lock().initialize(); }
     let idt = IDT.call_once(|| {
         let mut idt = Idt::default();
         idt[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);

@@ -1,15 +1,15 @@
 use core::arch::asm;
-use bit_field::BitField; 
+use bit_field::BitField;
 use lazy_static::lazy_static;
 use super::{TablePointer, VirtualAddress};
 
-pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+pub const DOUBLE_FAULT_IST_INDEX: u8 = 0;
+const STACK_SIZE: usize = 4096 * 5;
 
 lazy_static! {
     static ref TSS: Tss = {
         let mut tss = Tss::default();
         tss.ist[DOUBLE_FAULT_IST_INDEX as usize] = {
-            const STACK_SIZE: usize = 4096 * 5;
             static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
             let stack_end = unsafe {
@@ -20,9 +20,7 @@ lazy_static! {
         };
         tss
     };
-}
 
-lazy_static! {
     pub static ref GDT: (Gdt, Selectors) = {
         let mut gdt = Gdt::default();
         let cs = gdt.add_entry(Descriptor::UserSegment(0x20980000000000));

@@ -16,8 +16,16 @@ pub extern fn rust_main() {
     util::init();    
     crate::interrupts::init();
 
+    // tests();
+
     println!("we made it to the loop");
-    loop { unsafe { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)); }}
+    loop {}
+}
+
+#[allow(dead_code)]
+fn tests() {
+    // double fault
+    unsafe { *(0xdeadbeef as *mut u8) = 42; };
 }
 
 use core::panic::PanicInfo;

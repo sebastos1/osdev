@@ -1,5 +1,6 @@
 use spin::Once;
 use core::arch::asm;
+use lazy_static::lazy_static;
 use super::gdt::SegmentSelector;
 use core::sync::atomic::Ordering;
 use core::sync::atomic::AtomicU64;
@@ -10,17 +11,12 @@ use x86_64::structures::idt::InterruptStackFrame;
 pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
 pub static IDT: Once<Idt> = Once::new();
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
-{
-    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst); // Increment system ticks
-    print!(".");
-    PICS.lock().send_eoi(InterruptIndex::Timer as u8);
-}
-
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
+    DoubleFault = 8,
     Timer = PIC_OFFSET,
+    Keyboard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,9 +111,54 @@ pub fn init() {
     let idt = IDT.call_once(|| {
         let mut idt = Idt::default();
         idt[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);
-        // idt.double_fault.set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
+        idt[InterruptIndex::DoubleFault as usize].set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
+        idt[InterruptIndex::Keyboard as usize].set_handler(keyboard_interrupt_handler);
         idt
     });
 
     idt.load();
+}
+
+extern "x86-interrupt" fn double_fault_handler(frame: InterruptStackFrame) {
+    print!("\nEXCEPTION: DOUBLE FAULT\n{:#?}", frame);
+    loop {};
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
+{
+    // print!(".");
+    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst); // Increment system ticks
+    PICS.lock().send_eoi(InterruptIndex::Timer as u8);
+}
+
+extern "x86-interrupt" fn keyboard_interrupt_handler(_: InterruptStackFrame) {
+    use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+    use crate::interrupts::norwegian::No105Key;
+    use spin::Mutex;
+
+    lazy_static! {
+        static ref KEYBOARD: Mutex<Keyboard<No105Key, ScancodeSet1>> = Mutex::new(
+            Keyboard::new(ScancodeSet1::new(), No105Key, HandleControl::Ignore)
+        );
+    }
+
+    let mut keyboard = KEYBOARD.lock();
+    let scancode: u8 = crate::util::inb(0x60);
+
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+        if let Some(key) = keyboard.process_keyevent(key_event) {
+            match key {
+                DecodedKey::Unicode(character) => {
+                    if character == '\n' {
+                        println!();
+                    } else if (0x20..=0x7e).contains(&(character as u32)) {
+                        print!("{}", character);
+                    }
+                },
+                DecodedKey::RawKey(_) => {}
+            }
+        }
+    }
+
+    PICS.lock().send_eoi(InterruptIndex::Keyboard as u8);
 }

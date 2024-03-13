@@ -14,19 +14,18 @@ impl Pic {
         Pic { offset, command_port, data_port }
     }
 
-    fn handles_interrupt(&self, interrupt_index: u8) -> bool {
-        self.offset <= interrupt_index && interrupt_index < self.offset + 8 // each PIC handles 8 interrupts
+    fn handles_interrupt(&self, index: u8) -> bool {
+        self.offset <= index && index < self.offset + 8
     }
 }
 
-// chained pics
 pub struct Pics {
     primary: Pic,
     secondary: Pic,
 }
 
 impl Pics {
-    pub const fn new(offset: u8) -> Pics {
+    const fn new(offset: u8) -> Pics {
         Pics {
             primary: Pic::new(offset, 0x20, 0x21),
             secondary: Pic::new(offset + 8, 0xA0, 0xA1),
@@ -51,19 +50,18 @@ pub fn init() {
     let secondary_mask = inb(secondary.data_port);
 
     // 3 byte init sequence
-    let cmd_init = 0x11;
-    outb(primary.command_port, cmd_init);
-    outb(secondary.command_port, cmd_init);
+    outb(primary.command_port, 0x11);
+    outb(secondary.command_port, 0x11);
     wait();
 
-    // base offsets
+    // offsets
     outb(primary.data_port, primary.offset);
     outb(secondary.data_port, secondary.offset);
     wait();
 
     // chaining
-    outb(primary.data_port, 4); // Tell PIC1 that there is a PIC2 at IRQ2 (0000 0100)
-    outb(secondary.data_port, 2); // Tell PIC2 its cascade identity (0000 0010)
+    outb(primary.data_port, 4); // Tell PIC1 that PIC2 is at IRQ2
+    outb(secondary.data_port, 2); // Tell PIC2 cascade identity
     wait();
 
     // 8086 mode

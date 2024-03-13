@@ -123,7 +123,7 @@ extern "x86-interrupt" fn double_fault_handler() {
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler() {
-    print!(".");
+    // print!(".");
     PICS.lock().send_eoi(InterruptIndex::Timer);
 }
 
@@ -142,19 +142,14 @@ extern "x86-interrupt" fn keyboard_interrupt_handler() {
     let scancode: u8 = crate::util::inb(0x60);
 
     if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => {
-                    if character == '\n' {
-                        println!();
-                    } else if (0x20..=0x7e).contains(&(character as u32)) {
-                        print!("{}", character);
-                    }
-                },
-                DecodedKey::RawKey(_) => {}
+        if let Some(DecodedKey::Unicode(character)) = keyboard.process_keyevent(key_event) {
+            match character {
+                '\n' => println!(),
+                _ if (0x20..=0x7e).contains(&(character as u32)) => print!("{}", character),
+                _ => {}
             }
         }
     }
-
+    
     PICS.lock().send_eoi(InterruptIndex::Keyboard);
 }

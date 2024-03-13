@@ -17,7 +17,7 @@ lazy_static! {
 
 #[repr(transparent)]
 struct Buffer {
-    chars: [[Char; VGA_WIDTH]; VGA_HEIGHT],
+    chars: [[VgaEntry; VGA_WIDTH]; VGA_HEIGHT],
 }
 
 #[allow(unused)]
@@ -39,7 +39,7 @@ impl VgaColor {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct Char {
+struct VgaEntry {
     character: u8,
     color: VgaColor,
 }
@@ -67,7 +67,7 @@ impl Writer {
                 if self.column >= VGA_WIDTH {
                     self.new_line();
                 }
-                self.buffer.chars[self.row][self.column] = Char {
+                self.buffer.chars[self.row][self.column] = VgaEntry {
                     character: byte,
                     color: self.color
                 };
@@ -87,7 +87,7 @@ impl Writer {
 
     fn clear_row(&mut self, row: usize) {
         for col in 0..VGA_WIDTH {
-            self.buffer.chars[row][col] = Char {
+            self.buffer.chars[row][col] = VgaEntry {
                 character: b' ',
                 color: self.color,
             };

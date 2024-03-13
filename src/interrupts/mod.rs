@@ -1,7 +1,9 @@
-pub mod gdt;
-pub mod idt;
-pub mod pit;
-pub mod pic;
+use core::arch::asm;
+
+mod gdt;
+mod idt;
+mod pit;
+mod pic;
 mod norwegian;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -26,5 +28,5 @@ pub fn init() {
     idt::init();
 
     // enable interrupts
-    unsafe { core::arch::asm!("sti", options(preserves_flags, nostack)); }
+    unsafe { asm!("sti", options(preserves_flags, nostack)); }
 }

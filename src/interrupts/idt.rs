@@ -1,11 +1,11 @@
 use spin::Once;
 use core::arch::asm;
 use lazy_static::lazy_static;
-use super::gdt::SegmentSelector;
-use core::sync::atomic::Ordering;
-use core::sync::atomic::AtomicU64;
+use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
+use core::ops::{Index, IndexMut};
 use super::pic::{PIC_OFFSET, PICS};
 use super::{TablePointer, VirtualAddress};
+use core::sync::atomic::{AtomicU64, Ordering};
 use x86_64::structures::idt::InterruptStackFrame;
 
 pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
@@ -14,6 +14,7 @@ pub static IDT: Once<Idt> = Once::new();
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
+    DivideError,
     DoubleFault = 8,
     Timer = PIC_OFFSET,
     Keyboard,
@@ -61,9 +62,8 @@ impl IdtEntry {
         self
     }
 
-    #[allow(dead_code)]
-    fn with_ist_index(&mut self, index: u8) {
-        self.ist = index;
+    fn with_ist_index(&mut self, index: usize) {
+        self.ist = index as u8;
     }
 }
 
@@ -81,7 +81,7 @@ impl Default for Idt {
 impl Idt {
     fn load(&self) {
         let pointer = TablePointer {
-            base: VirtualAddress(self as *const _ as u64),
+            base: VirtualAddress(self.0.as_ptr() as u64),
             limit: (core::mem::size_of::<Self>() - 1) as u16,
         };
         unsafe {
@@ -94,29 +94,35 @@ impl Idt {
     }
 }
 
-impl core::ops::Index<usize> for Idt {
+impl Index<InterruptIndex> for Idt {
     type Output = IdtEntry;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+    fn index(&self, index: InterruptIndex) -> &Self::Output {
+        &self.0[index as usize]
     }
 }
 
-impl core::ops::IndexMut<usize> for Idt {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
+impl IndexMut<InterruptIndex> for Idt {
+    fn index_mut(&mut self, index: InterruptIndex) -> &mut Self::Output {
+        &mut self.0[index as usize]
     }
 }
 
 pub fn init() {
     let idt = IDT.call_once(|| {
         let mut idt = Idt::default();
-        idt[InterruptIndex::Timer as usize].set_handler(timer_interrupt_handler);
-        idt[InterruptIndex::DoubleFault as usize].set_handler(double_fault_handler).with_ist_index(super::gdt::DOUBLE_FAULT_IST_INDEX);
-        idt[InterruptIndex::Keyboard as usize].set_handler(keyboard_interrupt_handler);
+        idt[InterruptIndex::Timer].set_handler(timer_interrupt_handler);
+        idt[InterruptIndex::DoubleFault].set_handler(double_fault_handler).with_ist_index(DOUBLE_FAULT_IST_INDEX);
+        idt[InterruptIndex::Keyboard].set_handler(keyboard_interrupt_handler);
+        idt[InterruptIndex::DivideError].set_handler(divide_error_handler);
         idt
     });
 
     idt.load();
+}
+
+extern "x86-interrupt" fn divide_error_handler(frame: InterruptStackFrame) {
+    print!("\nEXCEPTION: DIVIDE ERROR\n{:#?}", frame);
+    loop {};
 }
 
 extern "x86-interrupt" fn double_fault_handler(frame: InterruptStackFrame) {

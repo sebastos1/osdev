@@ -2,7 +2,6 @@ use core::arch::asm;
 
 mod gdt;
 mod idt;
-mod pit;
 mod pic;
 mod norwegian;
 
@@ -23,7 +22,6 @@ pub struct TablePointer {
 
 pub fn init() {
     gdt::init();
-    pit::init();
     pic::init();
     idt::init();
 

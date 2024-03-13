@@ -43,3 +43,11 @@ pub fn inb(port: u16) -> u8 {
     }
     value
 }
+
+pub fn hlt_loop() -> ! {
+    loop {
+        unsafe {
+            asm!("hlt", options(nostack, nomem, preserves_flags));
+        }
+    }
+}

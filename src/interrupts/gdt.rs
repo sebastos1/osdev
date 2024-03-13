@@ -19,11 +19,12 @@ lazy_static! {
         tss
     };
 
-    static ref GDT: (Gdt, Selectors) = {
+    pub static ref GDT: Gdt = {
         let mut gdt = Gdt::new();
         let code = gdt.add_entry(Descriptor::UserSegment(0x20980000000000));
         let tss = gdt.add_entry(TSS.descriptor());
-        (gdt, Selectors {code, tss})
+        gdt.selectors = Selectors {code, tss};
+        gdt
     };
 }
 
@@ -85,9 +86,10 @@ pub struct Selectors {
     pub tss: SegmentSelector,
 }
 
-struct Gdt {
+pub struct Gdt {
     table: [u64; 8],
     next: usize,
+    pub selectors: Selectors,
 }
 
 impl Gdt {
@@ -95,6 +97,10 @@ impl Gdt {
         Gdt {
             table: [0; 8],
             next: 1,
+            selectors: Selectors {
+                code: SegmentSelector::new(0),
+                tss: SegmentSelector::new(0),
+            },
         }
     }
 
@@ -133,7 +139,7 @@ impl Gdt {
 }
 
 pub fn init() {
-    let (gdt, selectors) = &*GDT;
+    let gdt = &GDT;
 
     gdt.load();
 
@@ -144,13 +150,13 @@ pub fn init() {
             "push {tmp}",
             "retfq",
             "1:",
-            sel = in(reg) u64::from(selectors.code.0),
+            sel = in(reg) u64::from(gdt.selectors.code.0),
             tmp = lateout(reg) _,
             options(preserves_flags),
         );
         asm!( // load tss
             "ltr {0:x}",
-            in(reg) selectors.tss.0,
+            in(reg) gdt.selectors.tss.0,
             options(preserves_flags),
         );
     }

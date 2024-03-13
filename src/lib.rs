@@ -19,7 +19,7 @@ pub extern fn rust_main() {
     tests();
 
     println!("we made it to the loop");
-    loop {}
+    util::hlt_loop();
 }
 
 #[allow(dead_code)]
@@ -34,5 +34,5 @@ fn tests() {
 use core::panic::PanicInfo;
 #[panic_handler]
 fn panic(_: &PanicInfo) -> ! { 
-    loop {}
+    util::hlt_loop();
 } 

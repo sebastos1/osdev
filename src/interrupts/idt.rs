@@ -1,15 +1,12 @@
 use spin::Once;
 use core::arch::asm;
 use lazy_static::lazy_static;
-use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
 use core::ops::{Index, IndexMut};
 use super::pic::{PIC_OFFSET, PICS};
 use super::{TablePointer, VirtualAddress};
-use core::sync::atomic::{AtomicU64, Ordering};
-use x86_64::structures::idt::InterruptStackFrame;
+use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
 
-pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
-pub static IDT: Once<Idt> = Once::new();
+static IDT: Once<Idt> = Once::new();
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -22,7 +19,7 @@ pub enum InterruptIndex {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
-pub struct IdtEntry {
+struct IdtEntry {
     fn_pointer_low: u16,
     cs: SegmentSelector, // u16
     ist: u8,
@@ -47,38 +44,33 @@ impl Default for IdtEntry {
 }
 
 impl IdtEntry {
-    fn set_handler(&mut self, handler: extern "x86-interrupt" fn(InterruptStackFrame)) -> &mut Self {
+    fn set_handler(&mut self, handler: extern "x86-interrupt" fn()) -> &mut Self {
         let address = handler as u64;
         self.fn_pointer_low = address as u16;
         self.fn_pointer_middle = (address >> 16) as u16;
         self.fn_pointer_high = (address >> 32) as u32;
-        
-        let mut segment: u16;
-        unsafe {
-            asm!("mov {0:x}, cs", out(reg) segment, options(nomem, nostack, preserves_flags));
-        }
-        self.cs = SegmentSelector(segment);
+        self.cs = super::gdt::GDT.selectors.code;
         self.flags |= 0b10000000;
         self
     }
 
     fn with_ist_index(&mut self, index: usize) {
+        if index > 7 {
+            panic!("IST index must be between 0 and 7");
+        }
         self.ist = index as u8;
     }
 }
 
 #[derive(Clone, Debug)]
-#[repr(C)]
-#[repr(align(16))]
-pub struct Idt(pub [IdtEntry; 256]);
-
-impl Default for Idt {
-    fn default() -> Self {
-        Idt([IdtEntry::default(); 256])
-    }
-}
+#[repr(C, align(16))]
+struct Idt([IdtEntry; 256]);
 
 impl Idt {
+    fn new() -> Self {
+        Idt([IdtEntry::default(); 256])
+    }
+
     fn load(&self) {
         let pointer = TablePointer {
             base: VirtualAddress(self.0.as_ptr() as u64),
@@ -109,7 +101,7 @@ impl IndexMut<InterruptIndex> for Idt {
 
 pub fn init() {
     let idt = IDT.call_once(|| {
-        let mut idt = Idt::default();
+        let mut idt = Idt::new();
         idt[InterruptIndex::Timer].set_handler(timer_interrupt_handler);
         idt[InterruptIndex::DoubleFault].set_handler(double_fault_handler).with_ist_index(DOUBLE_FAULT_IST_INDEX);
         idt[InterruptIndex::Keyboard].set_handler(keyboard_interrupt_handler);
@@ -120,24 +112,22 @@ pub fn init() {
     idt.load();
 }
 
-extern "x86-interrupt" fn divide_error_handler(frame: InterruptStackFrame) {
-    print!("\nEXCEPTION: DIVIDE ERROR\n{:#?}", frame);
-    loop {};
+extern "x86-interrupt" fn divide_error_handler() {
+    print!("\nEXCEPTION: DIVIDE ERROR\n");
+    crate::util::hlt_loop();
 }
 
-extern "x86-interrupt" fn double_fault_handler(frame: InterruptStackFrame) {
-    print!("\nEXCEPTION: DOUBLE FAULT\n{:#?}", frame);
-    loop {};
+extern "x86-interrupt" fn double_fault_handler() {
+    print!("\nEXCEPTION: DOUBLE FAULT\n");
+    crate::util::hlt_loop();
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame)
-{
-    // print!(".");
-    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst); // Increment system ticks
-    PICS.lock().send_eoi(InterruptIndex::Timer as u8);
+extern "x86-interrupt" fn timer_interrupt_handler() {
+    print!(".");
+    PICS.lock().send_eoi(InterruptIndex::Timer);
 }
 
-extern "x86-interrupt" fn keyboard_interrupt_handler(_: InterruptStackFrame) {
+extern "x86-interrupt" fn keyboard_interrupt_handler() {
     use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
     use crate::interrupts::norwegian::No105Key;
     use spin::Mutex;
@@ -166,5 +156,5 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_: InterruptStackFrame) {
         }
     }
 
-    PICS.lock().send_eoi(InterruptIndex::Keyboard as u8);
+    PICS.lock().send_eoi(InterruptIndex::Keyboard);
 }

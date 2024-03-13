@@ -33,8 +33,8 @@ impl Pics {
         }
     }
 
-    pub fn send_eoi(&mut self, interrupt_index: u8) {
-        if self.secondary.handles_interrupt(interrupt_index) {
+    pub fn send_eoi(&mut self, interrupt_index: super::idt::InterruptIndex) {
+        if self.secondary.handles_interrupt(interrupt_index as u8) {
             outb(self.secondary.command_port, 0x20); // secondary
         }
         outb(self.primary.command_port, 0x20); // primary
@@ -50,28 +50,28 @@ pub fn init() {
     let primary_mask = inb(primary.data_port);
     let secondary_mask = inb(secondary.data_port);
 
-    // Tell each PIC that we're going to send it a three-byte initialization sequence on its data port.
+    // 3 byte init sequence
     let cmd_init = 0x11;
-    outb(primary.command_port, cmd_init); // Command sent to begin PIC initialization.
+    outb(primary.command_port, cmd_init);
     outb(secondary.command_port, cmd_init);
     wait();
 
-    // Byte 1: Set up our base offsets.
+    // base offsets
     outb(primary.data_port, primary.offset);
     outb(secondary.data_port, secondary.offset);
     wait();
 
-    // Byte 2: Configure chaining between PIC1 and PIC2.
+    // chaining
     outb(primary.data_port, 4); // Tell PIC1 that there is a PIC2 at IRQ2 (0000 0100)
     outb(secondary.data_port, 2); // Tell PIC2 its cascade identity (0000 0010)
     wait();
 
-    // Byte 3: Set our mode.
-    outb(primary.data_port, 0x01); // 8086 mode
+    // 8086 mode
+    outb(primary.data_port, 0x01);
     outb(secondary.data_port, 0x01);
     wait();
 
-    // Restore our saved masks.
+    // restore masks
     outb(primary.data_port, primary_mask);
     outb(secondary.data_port, secondary_mask);
 }

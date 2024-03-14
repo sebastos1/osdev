@@ -1,8 +1,9 @@
 use core::arch::asm;
 
 mod gdt;
-mod idt;
 mod pic;
+mod idt;
+mod handlers;
 mod norwegian;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

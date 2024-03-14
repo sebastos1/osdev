@@ -10,14 +10,12 @@ mod interrupts;
 
 #[no_mangle]
 pub extern fn rust_main() {
-    vga::clear_screen();
-    println!("Hello world! {}", 123);
-    
     util::init();    
+    vga::clear_screen();
     crate::interrupts::init();
 
+    
     tests();
-
     println!("we made it to the loop");
     util::hlt_loop();
 }
@@ -35,4 +33,4 @@ use core::panic::PanicInfo;
 #[panic_handler]
 fn panic(_: &PanicInfo) -> ! { 
     util::hlt_loop();
-} 
+}

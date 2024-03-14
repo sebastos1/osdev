@@ -34,40 +34,34 @@ enum Descriptor {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed(4))]
+#[repr(C, packed)]
 struct Tss {
-    reserved_1: u32,
-    rsp: [VirtualAddress; 3],
-    reserved_2: u64,
+    _reserved_1: u32,
+    _rsp: [VirtualAddress; 3],
+    _reserved_2: u64,
     ist: [VirtualAddress; 7],
-    reserved_3: u64,
-    reserved_4: u16,
+    _reserved_3: u64,
+    _reserved_4: u16,
     iomap_base: u16,
 }
 
 impl Tss {
     fn new() -> Tss {
         Tss {
-            reserved_1: 0,
-            rsp: [VirtualAddress(0); 3],
-            reserved_2: 0,
-            ist: [VirtualAddress(0); 7],
-            reserved_3: 0,
-            reserved_4: 0,
             iomap_base: size_of::<Tss>() as u16,
+            ..unsafe { core::mem::zeroed() }
         }
     }
 
     fn descriptor(&self) -> Descriptor {
         let ptr = self as *const _ as u64;
-        let mut low: u64 = 1 << 47;
-        low.set_bits(16..40, ptr.get_bits(0..24)); // low
-        low.set_bits(56..64, ptr.get_bits(24..32)); // middle
-        low.set_bits(0..16, (self.iomap_base - 1) as u64); // limit
-        low.set_bits(40..44, 0b1001); // segment type
-        let high = ptr.get_bits(32..64); // high
+        let mut low = 1 << 47;
+        low.set_bits(0..16, (self.iomap_base - 1) as u64)
+            .set_bits(16..40, ptr.get_bits(0..24))
+            .set_bits(40..44, 0b1001)
+            .set_bits(56..64, ptr.get_bits(24..32));
 
-        Descriptor::SystemSegment(low, high)
+        Descriptor::SystemSegment(low, ptr.get_bits(32..64))
     }
 }
 
@@ -95,12 +89,8 @@ pub struct Gdt {
 impl Gdt {
     fn new() -> Self {
         Gdt {
-            table: [0; 8],
             next: 1,
-            selectors: Selectors {
-                code: SegmentSelector::new(0),
-                tss: SegmentSelector::new(0),
-            },
+            ..unsafe { core::mem::zeroed() }
         }
     }
 
@@ -143,8 +133,9 @@ pub fn init() {
 
     gdt.load();
 
+    // cs and tss
     unsafe {
-        asm!( // set cs
+        asm!(
             "push {sel}",
             "lea {tmp}, [1f + rip]",
             "push {tmp}",
@@ -154,7 +145,7 @@ pub fn init() {
             tmp = lateout(reg) _,
             options(preserves_flags),
         );
-        asm!( // load tss
+        asm!(
             "ltr {0:x}",
             in(reg) gdt.selectors.tss.0,
             options(preserves_flags),

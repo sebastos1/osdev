@@ -1,7 +1,7 @@
 use core::arch::asm;
-use core::mem::size_of;
 use bit_field::BitField;
 use lazy_static::lazy_static;
+use core::mem::{size_of, zeroed};
 use super::{TablePointer, VirtualAddress};
 
 pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
@@ -49,7 +49,7 @@ impl Tss {
     fn new() -> Tss {
         Tss {
             iomap_base: size_of::<Tss>() as u16,
-            ..unsafe { core::mem::zeroed() }
+            ..unsafe { zeroed() }
         }
     }
 
@@ -90,7 +90,7 @@ impl Gdt {
     fn new() -> Self {
         Gdt {
             next: 1,
-            ..unsafe { core::mem::zeroed() }
+            ..unsafe { zeroed() }
         }
     }
 

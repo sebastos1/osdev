@@ -24,7 +24,7 @@ default: run
 
 @run: build
     echo "Running..."
-    qemu-system-x86_64 -cdrom {{iso}} -audiodev pa,id=speaker -machine pcspk-audiodev=speaker
+    qemu-system-x86_64 -cdrom {{iso}} -audiodev pa,id=speaker -machine pcspk-audiodev=speaker -m 2048M
 
 @clean:
     rm -r build

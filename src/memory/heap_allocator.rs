@@ -46,6 +46,6 @@ unsafe impl GlobalAlloc for LockedHeap {
     } 
     
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        // unimplemented!(); no-op in a simple heap allocator
+        // no op
     }
 }

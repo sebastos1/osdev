@@ -40,9 +40,9 @@ pub fn init(multiboot_addr: usize) {
         HEAP_ALLOCATOR.lock().init(heap_start, heap_size);
     }
 
-    // println!("head node: 0x{:x}", HEAP_ALLOCATOR.lock().head.0 as usize);
-
     use alloc::vec::Vec;
-    let vec1: Vec<u32> = (1..=5).collect();
+    let vec1: Vec<u32> = (1..=91).collect();
     println!("vec: {:?}", vec1);
+
+    // println!("head node: 0x{:x}", HEAP_ALLOCATOR.lock().head.0 as usize);
 }

@@ -10,6 +10,10 @@ impl NodePointer {
         self.0 as usize
     }
 
+    fn contains_addr(&self, addr: usize) -> bool {
+        addr >= self.addr() && addr < self.addr() + self.size()
+    }
+
     fn size(&self) -> usize {
         unsafe { (*self.0).size }
     }
@@ -75,43 +79,27 @@ impl LockedHeap {
 
 unsafe impl GlobalAlloc for LockedHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        println!("trying allocation of size: {}", layout.size());
         let mut root = self.lock();
         let mut current = Some(root.head);
 
         while let Some(free_node) = current {
-            println!("free_node: {:?}", free_node);
-            
-            let inner_size = align_up(layout.size(), 8);
-            let outer_size = align_up(NODE_SIZE, 8) + inner_size;
-            let padding = inner_size - layout.size();
 
-            println!("outer_size: {}", outer_size);
-
-            println!("node_size: {}", NODE_SIZE);
-            println!("layout_size: {}", layout.size());
+            let alignment = 8;
+            let inner_size = align_up(layout.size(), alignment);
+            let outer_size = align_up(NODE_SIZE, alignment) + inner_size;
+            // let padding = inner_size - layout.size(); something sus here
 
             if free_node.is_free() && free_node.size() >= outer_size {
-                
                 let new_node_addr = free_node.addr() + free_node.size() - outer_size;
-
                 let mut return_pointer = new_node_addr;
                 if free_node.size() > outer_size {
-
-                    println!("new_node_addr: {}", new_node_addr);
-
                     let new_node = NodePointer(new_node_addr as *mut Node);
-                    println!("1");
                     new_node.set_next(Some(free_node));
-                    println!("2");
                     new_node.set_free(false);
                     new_node.set_size(inner_size);
-                    println!("3");
 
-                    return_pointer += NODE_SIZE - inner_size + padding;
-
-                    free_node.set_size(free_node.size() - outer_size);
-
+                    return_pointer = return_pointer + outer_size - inner_size;
+                    free_node.set_size(free_node.size() - outer_size - alignment);
                     root.head = new_node;
                 } else {
                     root.head = free_node.next().take().unwrap();
@@ -123,8 +111,19 @@ unsafe impl GlobalAlloc for LockedHeap {
         core::ptr::null_mut()
     }
     
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        todo!();
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        let root = self.lock();
+        let mut current = Some(root.head);
+        
+        while let Some(node) = current {
+            if node.contains_addr(ptr as usize) {
+                node.set_free(true);
+                // no merging of nodes for now
+                return;
+            }
+            current = node.next();
+        }
+        panic!("Attempted to deallocate memory that was not allocated!");
     }
 }
 

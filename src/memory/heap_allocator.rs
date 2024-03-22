@@ -82,25 +82,33 @@ unsafe impl GlobalAlloc for LockedHeap {
         while let Some(free_node) = current {
             println!("free_node: {:?}", free_node);
             
-            let outer_size = align_up(NODE_SIZE, layout.align()) + align_up(layout.size(), layout.align());
+            let inner_size = align_up(layout.size(), 8);
+            let outer_size = align_up(NODE_SIZE, 8) + inner_size;
+            let padding = inner_size - layout.size();
+
+            println!("outer_size: {}", outer_size);
+
+            println!("node_size: {}", NODE_SIZE);
+            println!("layout_size: {}", layout.size());
 
             if free_node.is_free() && free_node.size() >= outer_size {
                 
                 let new_node_addr = free_node.addr() + free_node.size() - outer_size;
-                let inner_size = align_up(layout.size(), layout.align());
 
                 let mut return_pointer = new_node_addr;
                 if free_node.size() > outer_size {
 
+                    println!("new_node_addr: {}", new_node_addr);
+
                     let new_node = NodePointer(new_node_addr as *mut Node);
                     println!("1");
-                    new_node.set_free(false);
-                    println!("2");
                     new_node.set_next(Some(free_node));
+                    println!("2");
+                    new_node.set_free(false);
                     new_node.set_size(inner_size);
                     println!("3");
 
-                    return_pointer += NODE_SIZE;
+                    return_pointer += NODE_SIZE - inner_size + padding;
 
                     free_node.set_size(free_node.size() - outer_size);
 

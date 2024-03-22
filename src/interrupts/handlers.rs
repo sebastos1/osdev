@@ -1,8 +1,10 @@
 use spin::Mutex;
+use super::SYSTEM_TICKS;
 use super::pic::PICS;
 use lazy_static::lazy_static;
-use super::idt::InterruptIndex;
 use super::norwegian::No105Key;
+use core::sync::atomic::Ordering;
+use super::idt::InterruptIndex;
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 
 pub extern "x86-interrupt" fn divide_error() {
@@ -17,6 +19,7 @@ pub extern "x86-interrupt" fn double_fault() {
 
 pub extern "x86-interrupt" fn timer_interrupt() {
     // print!(".");
+    SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);
     PICS.lock().send_eoi(InterruptIndex::Timer);
 }
 

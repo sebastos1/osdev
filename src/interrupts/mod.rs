@@ -1,10 +1,14 @@
 use core::arch::asm;
+use core::sync::atomic::AtomicU64;
 
-mod gdt;
-mod pic;
-mod idt;
-mod handlers;
-mod norwegian;
+pub mod gdt;
+pub mod pic;
+pub mod pit;
+pub mod idt;
+pub mod handlers;
+pub mod norwegian;
+
+pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
@@ -24,6 +28,7 @@ pub struct TablePointer {
 pub fn init() {
     gdt::init();
     pic::init();
+    pit::init();
     idt::init();
 
     // enable interrupts

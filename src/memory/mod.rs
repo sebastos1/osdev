@@ -15,8 +15,4 @@ pub fn init(multiboot_addr: usize) {
     let heap_start = (kernel_end + 4096 - 1) & !(4096 - 1);
     let heap_size = 1000 * 1024; // 1MiB
     HEAP_ALLOCATOR.lock().init(heap_start, heap_size);
-
-    use alloc::vec::Vec;
-    let vec1: Vec<u32> = (1..=91).collect();
-    println!("vec: {:?}", vec1);
 }

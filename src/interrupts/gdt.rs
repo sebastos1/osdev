@@ -2,7 +2,7 @@ use core::arch::asm;
 use bit_field::BitField;
 use lazy_static::lazy_static;
 use core::mem::{size_of, zeroed};
-use super::{TablePointer, VirtualAddress};
+use super::{TablePointer, Address};
 
 pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
 
@@ -14,7 +14,7 @@ lazy_static! {
             const STACK_SIZE: usize = 4096 * 5;
             static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
             let stack_end = unsafe { STACK.as_ptr() as u64 + STACK_SIZE as u64 };
-            VirtualAddress(stack_end)
+            Address(stack_end)
         };
         tss
     };
@@ -37,9 +37,9 @@ enum Descriptor {
 #[repr(C, packed)]
 struct Tss {
     _reserved_1: u32,
-    _rsp: [VirtualAddress; 3],
+    _rsp: [Address; 3],
     _reserved_2: u64,
-    ist: [VirtualAddress; 7],
+    ist: [Address; 7],
     _reserved_3: u64,
     _reserved_4: u16,
     iomap_base: u16,
@@ -115,7 +115,7 @@ impl Gdt {
 
     fn load(&self) {
         let pointer = TablePointer {
-            base: VirtualAddress(self.table.as_ptr() as u64),
+            base: Address(self.table.as_ptr() as u64),
             limit: (self.table.len() * size_of::<u64>() - 1) as u16,
         };
         unsafe {

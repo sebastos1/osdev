@@ -1,10 +1,10 @@
 use spin::Mutex;
-use super::SYSTEM_TICKS;
 use super::pic::PICS;
+use super::SYSTEM_TICKS;
 use lazy_static::lazy_static;
 use super::norwegian::No105Key;
-use core::sync::atomic::Ordering;
 use super::idt::InterruptIndex;
+use core::sync::atomic::Ordering;
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1};
 
 pub extern "x86-interrupt" fn divide_error() {

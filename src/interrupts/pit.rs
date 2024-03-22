@@ -13,6 +13,7 @@ pub fn init() {
     outb(0x40, ((divisor >> 8) & 0xFF) as u8);
 }
 
+#[allow(dead_code)]
 pub fn sleep_busy(milliseconds: u32) {
     let start_tick = SYSTEM_TICKS.load(Ordering::SeqCst);
     let ticks_to_wait = milliseconds * TIMER_FREQUENCY / 1000;

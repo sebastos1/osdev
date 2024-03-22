@@ -3,7 +3,7 @@ use super::handlers;
 use super::pic::PIC_OFFSET;
 use lazy_static::lazy_static;
 use core::ops::{Index, IndexMut};
-use super::{TablePointer, VirtualAddress};
+use super::{TablePointer, Address};
 use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
 
 #[derive(Debug, Clone, Copy)]
@@ -62,7 +62,7 @@ impl Idt {
 
     fn load(&self) {
         let pointer = TablePointer {
-            base: VirtualAddress(self.0.as_ptr() as u64),
+            base: Address(self.0.as_ptr() as u64),
             limit: (core::mem::size_of::<Self>() - 1) as u16,
         };
         unsafe {

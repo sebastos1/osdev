@@ -12,17 +12,13 @@ pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
-pub struct VirtualAddress(pub u64);
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(transparent)]
-pub struct PhysicalAddress(pub u64);
+pub struct Address(pub u64);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed(2))]
 pub struct TablePointer {
     pub limit: u16,
-    pub base: VirtualAddress,
+    pub base: Address,
 }
 
 pub fn init() {

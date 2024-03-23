@@ -2,7 +2,7 @@ use crate::util::outb;
 use super::SYSTEM_TICKS;
 use core::sync::atomic::Ordering;
 
-const PIT_BASE_FREQUENCY: u32 = 1_193_182;
+pub const PIT_BASE_FREQUENCY: u32 = 1_193_182;
 pub const TIMER_FREQUENCY: u32 = 100; // 10 ms per tick
 
 pub fn init() {
@@ -13,7 +13,6 @@ pub fn init() {
     outb(0x40, ((divisor >> 8) & 0xFF) as u8);
 }
 
-#[allow(dead_code)]
 pub fn sleep_busy(milliseconds: u32) {
     let start_tick = SYSTEM_TICKS.load(Ordering::SeqCst);
     let ticks_to_wait = milliseconds * TIMER_FREQUENCY / 1000;

@@ -7,6 +7,7 @@ extern crate alloc;
 #[macro_use]
 mod vga;
 mod util;
+mod music;
 mod memory;
 mod interrupts;
 
@@ -16,6 +17,10 @@ pub extern fn rust_main(multiboot_addr: usize) {
     util::init();    
     memory::init(multiboot_addr);
     interrupts::init();
+
+    // play the entirety of through the fire and flames
+    music::ttfaf();
+
     println!("we made it to the loop");
     util::hlt_loop()
 }

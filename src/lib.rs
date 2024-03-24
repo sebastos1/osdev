@@ -18,7 +18,6 @@ pub extern fn rust_main(multiboot_addr: usize) {
     memory::init(multiboot_addr);
     interrupts::init();
 
-    // play the entirety of through the fire and flames
     music::ttfaf();
 
     println!("we made it to the loop");

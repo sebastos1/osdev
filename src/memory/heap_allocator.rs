@@ -32,20 +32,10 @@ impl NodePointer {
         unsafe { (*self.0).next = next }
         Self(self.0)
     }
-
-    fn is_free(&self) -> bool {
-        unsafe { (*self.0).is_free }
-    }
-
-    fn set_free(&self, is_free: bool) -> Self {
-        unsafe { (*self.0).is_free = is_free }
-        Self(self.0)
-    }
 }
 
 struct Node {
     size: usize,
-    is_free: bool,
     next: Option<NodePointer>,
 }
 
@@ -63,7 +53,6 @@ impl HeapAllocator {
     pub fn init(&mut self, heap_start: usize, heap_size: usize) {
         self.head = Some(NodePointer(heap_start as *mut Node)
             .set_next(None)
-            .set_free(true)
             .set_size(heap_size - NODE_SIZE_ALIGNED)); // its aligned to 4096 already
     }
 }
@@ -86,13 +75,12 @@ unsafe impl GlobalAlloc for LockedHeap {
         let total_size = layout_offset + layout_size;
 
         while let Some(free_node) = current {
-            if free_node.is_free() && free_node.size() >= total_size {
+            if free_node.size() >= total_size {
 
                 let new_node_addr = free_node.addr() + free_node.size() - total_size;
                 let return_pointer = new_node_addr + layout_offset;
 
                 NodePointer(new_node_addr as *mut Node)
-                    .set_free(false)
                     .set_size(layout_size)
                     .set_next(None);
   
@@ -109,14 +97,7 @@ unsafe impl GlobalAlloc for LockedHeap {
         let mut root = self.lock();
 
         // if there's not a node here, we're in big trouble anyway. Just assume there is :)
-        let node = NodePointer((ptr as usize - NODE_SIZE_ALIGNED) as *mut Node);
-        
-        if !node.is_free() {
-            node.set_free(true);
-            node.set_next(root.head);
-            root.head = Some(node);
-            return
-        }
-        panic!("Failed to deallocate memory");      
+        let node = NodePointer((ptr as usize - NODE_SIZE_ALIGNED) as *mut Node).set_next(root.head);
+        root.head = Some(node);    
     }
 }

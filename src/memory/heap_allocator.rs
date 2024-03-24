@@ -1,9 +1,10 @@
-use crate::util::align_up;
+use crate::util::{align_up};
 use spin::{Mutex, MutexGuard};
+use core::mem::size_of;
 use core::alloc::{Layout, GlobalAlloc};
 
-const NODE_SIZE: usize = core::mem::size_of::<Node>();
-const DEFAULT_ALIGNMENT: usize = 8;
+const CHUNK: usize = 16; // 16 byte chunks
+const NODE_SIZE_ALIGNED: usize = align_up(size_of::<Node>(), CHUNK);
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
@@ -12,10 +13,6 @@ struct NodePointer(*mut Node);
 impl NodePointer {
     fn addr(&self) -> usize {
         self.0 as usize
-    }
-
-    fn contains_addr(&self, addr: usize) -> bool {
-        addr >= self.addr() && addr < self.addr() + self.size()
     }
 
     fn size(&self) -> usize {
@@ -67,7 +64,7 @@ impl HeapAllocator {
         self.head = Some(NodePointer(heap_start as *mut Node)
             .set_next(None)
             .set_free(true)
-            .set_size(heap_size));
+            .set_size(heap_size - NODE_SIZE_ALIGNED)); // its aligned to 4096 already
     }
 }
 
@@ -81,36 +78,26 @@ impl LockedHeap {
 
 unsafe impl GlobalAlloc for LockedHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let mut root = self.lock();
+        let root = self.lock();
         let mut current = root.head;
 
+        let layout_size = align_up(layout.size(), CHUNK); // potential padding at the end
+        let layout_offset = NODE_SIZE_ALIGNED;
+        let total_size = layout_offset + layout_size;
+
         while let Some(free_node) = current {
+            if free_node.is_free() && free_node.size() >= total_size {
 
-            let layout_align = if layout.align() > DEFAULT_ALIGNMENT {
-                layout.align()
-            } else {
-                DEFAULT_ALIGNMENT
-            };
+                let new_node_addr = free_node.addr() + free_node.size() - total_size;
+                let return_pointer = new_node_addr + layout_offset;
 
-            let inner_size = align_up(layout.size(), layout_align);
-            let outer_size = align_up(NODE_SIZE, DEFAULT_ALIGNMENT) + inner_size;
-            // let padding = inner_size - layout.size(); something sus here
+                NodePointer(new_node_addr as *mut Node)
+                    .set_free(false)
+                    .set_size(layout_size)
+                    .set_next(None);
+  
+                free_node.set_size(free_node.size() - total_size); // might cause 0 sized nodes, but its ok
 
-            if free_node.is_free() && free_node.size() >= outer_size {
-                let new_node_addr = free_node.addr() + free_node.size() - outer_size;
-                let mut return_pointer = new_node_addr;
-                if free_node.size() > outer_size {
-                    let new_node = NodePointer(new_node_addr as *mut Node)
-                        .set_next(Some(free_node))
-                        .set_free(false)
-                        .set_size(inner_size);
-
-                    return_pointer = return_pointer + outer_size - inner_size;
-                    free_node.set_size(free_node.size() - outer_size - DEFAULT_ALIGNMENT);
-                    root.head = Some(new_node);
-                } else {
-                    root.head = free_node.next();
-                }
                 return return_pointer as *mut u8
             }
             current = free_node.next();
@@ -119,16 +106,17 @@ unsafe impl GlobalAlloc for LockedHeap {
     }
     
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        let root = self.lock();
-        let mut current = root.head;
+        let mut root = self.lock();
+
+        // if there's not a node here, we're in big trouble anyway. Just assume there is :)
+        let node = NodePointer((ptr as usize - NODE_SIZE_ALIGNED) as *mut Node);
         
-        while let Some(node) = current {
-            if node.contains_addr(ptr as usize) {
-                node.set_free(true);
-                return
-            }
-            current = node.next();
+        if !node.is_free() {
+            node.set_free(true);
+            node.set_next(root.head);
+            root.head = Some(node);
+            return
         }
-        panic!("Allocation hallucination! Heap horror!");
+        panic!("Failed to deallocate memory");      
     }
 }

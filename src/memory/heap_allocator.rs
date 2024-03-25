@@ -1,6 +1,6 @@
+use core::mem::size_of;
 use crate::util::{align_up};
 use spin::{Mutex, MutexGuard};
-use core::mem::size_of;
 use core::alloc::{Layout, GlobalAlloc};
 
 const CHUNK: usize = 16; // 16 byte chunks
@@ -10,7 +10,7 @@ const NODE_SIZE_ALIGNED: usize = align_up(size_of::<Node>(), CHUNK);
 #[repr(transparent)]
 struct NodePointer(*mut Node);
 
-impl NodePointer {
+impl NodePointer {    
     fn addr(&self) -> usize {
         self.0 as usize
     }

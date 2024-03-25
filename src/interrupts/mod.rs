@@ -1,5 +1,5 @@
 use core::arch::asm;
-use core::sync::atomic::AtomicU64;
+use core::sync::atomic::AtomicU32;
 
 pub mod gdt;
 pub mod pic;
@@ -8,7 +8,7 @@ pub mod idt;
 pub mod handlers;
 pub mod norwegian;
 
-pub static SYSTEM_TICKS: AtomicU64 = AtomicU64::new(0);
+pub static SYSTEM_TICKS: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]

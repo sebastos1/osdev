@@ -14,14 +14,7 @@ pub fn init() {
 }
 
 pub fn sleep_busy(milliseconds: u32) {
-    let start_tick = SYSTEM_TICKS.load(Ordering::SeqCst);
-    let ticks_to_wait = milliseconds * TIMER_FREQUENCY / 1000;
-    let mut elapsed_ticks = 0;
-
-    while elapsed_ticks < ticks_to_wait {
-        while SYSTEM_TICKS.load(Ordering::SeqCst) == start_tick + elapsed_ticks as u64 {
-            // chillin'
-        }
-        elapsed_ticks += 1;
-    }
+    let ticks = milliseconds * TIMER_FREQUENCY / 1000;
+    let target = SYSTEM_TICKS.load(Ordering::SeqCst) + ticks;
+    while SYSTEM_TICKS.load(Ordering::SeqCst) < target {}
 }

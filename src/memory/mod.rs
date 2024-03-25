@@ -12,7 +12,7 @@ pub fn init(multiboot_addr: usize) {
         BootInformation::load(multiboot_addr as *const BootInformationHeader).unwrap().end_address()
     };
 
-    let heap_start = crate::util::align_up(kernel_end, 4096);
+    let heap_start = crate::util::align_up(kernel_end, 2000 * 1024);
     let heap_size = 1000 * 1024; // 1MiB
     HEAP_ALLOCATOR.lock().init(heap_start, heap_size);
 }

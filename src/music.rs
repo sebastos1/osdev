@@ -5,7 +5,11 @@ use alloc::vec;
 
 pub fn play_melody(melody: &Vec<(u16, u16, u16)>) {    
     for &(frequency, pause_duration, duration) in melody.iter() {
-        println!("Playing a {}Hz note for {}ms + {}ms pause", frequency, duration, pause_duration);
+        print!("Playing a {}Hz note for {}ms", frequency, duration);
+        if pause_duration > 0 {
+            print!(" + {}ms pause", pause_duration);
+        }
+        println!();
         play_note_and_pause(frequency, duration, pause_duration);
     }
 }

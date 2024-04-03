@@ -1,28 +1,26 @@
 global start
 extern rust_main
 
-section .multiboot_header
-h_start:
+section .text
+mb_start:
     dd 0xe85250d6                 ; Magic number (Multiboot 2)
     dd 0                          ; Architecture (0 for i386 protected mode)
-    dd h_end - h_start            ; Header length
-    dd 0x100000000 - (0xe85250d6 + (h_end - h_start)) ; Checksum
+    dd mb_end - mb_start          ; Header length
+    dd 0x100000000 - (0xe85250d6 + (mb_end - mb_start)) ; Checksum
     dw 0                          ; End tag type
     dw 0                          ; End tag flags
     dd 8                          ; End tag size
-h_end:
+mb_end:
 
-section .text
 bits 32
 start:
     mov esp, stack_top            ; Set stack pointer
     mov edi, ebx                  ; Move Multiboot info pointer to EDI
-    call paging_setup             ; Set up paging tables
-    call paging_start             ; Enable paging
-    lgdt [gdt64.pointer]          ; Load 64-bit GDT
-    jmp gdt64.code:long_mode      ; Jump to 64-bit mode and Rust code
+    call paging                   ; Set up paging tables
+    lgdt [gdt.pointer]            ; Load 64-bit GDT
+    jmp gdt.code:long_mode        ; Jump to 64-bit mode and Rust code
 
-paging_setup:                     ; Initialize page table mappings
+paging:                           ; Initialize page table mappings
     mov eax, p4_table
     or eax, 0b11                  ; present + writable
     mov [p4_table + 511 * 8], eax ; Self-reference P4
@@ -33,22 +31,21 @@ paging_setup:                     ; Initialize page table mappings
     or eax, 0b11                  ; present + writable
     mov [p3_table], eax           ; Link P3 to P2
     xor ecx, ecx                  ; i=0
-.map_p2_table:
-    mov eax, 0x200000             ; 2MiB page size
-    mul ecx                       ; Calculate page address
+.map_p2:
+    mov eax, 0x200000             ; 2MiB pages
+    mul ecx                       ; 2MiB * i for addr
     or eax, 0b10000011            ; present + writable + huge page
-    mov [p2_table + ecx * 8], eax ; Map P2 entry to page
+    mov [p2_table + ecx * 8], eax ; Map entry to page
     inc ecx                       ; i++
-    cmp ecx, 512                  ; Check if all entries are mapped
-    jne .map_p2_table             ; Loop if not all mapped
-    ret
+    cmp ecx, 512                  ; Check if mapped, or
+    jne .map_p2                   ; loop if not
 
-paging_start:
+    ; When done mapping:
     mov eax, p4_table
-    mov cr3, eax                  ; Set CR3 to P4 table, activating page table
-    mov eax, cr4                  ; Get current CR4
+    mov cr3, eax                  ; Put P4 in CR3
+    mov eax, cr4                  ; CR4
     or eax, 1 << 5                ; Set PAE bit
-    mov cr4, eax                  ; Update CR4
+    mov cr4, eax                  ; Save CR4
     mov ecx, 0xC0000080           ; EFER MSR address
     rdmsr                         ; Read EFER
     or eax, 1 << 8                ; Set LME bit (long mode)
@@ -57,6 +54,14 @@ paging_start:
     or eax, 1 << 31               ; Set PG bit (paging)
     mov cr0, eax                  ; Update CR0
     ret
+
+gdt:
+    dq 0                          ; Null seg
+.code: equ $ - gdt                ; Offset, for long mode jump
+    dq 0x20980000000000           ; Code seg
+.pointer:                         ; Pointer for lgdt
+    dw $ - gdt - 1                ; Size as 16-bit
+    dq gdt                        ; Base address
 
 bits 64
 long_mode:
@@ -72,17 +77,8 @@ long_mode:
 
 section .bss
 align 4096                        ; Page alignment
-p4_table: resb 4096               ; Reserve 4KB for P4
-p3_table: resb 4096               ; Reserve 4KB for P3
-p2_table: resb 4096               ; Reserve 4KB for P2
+p4_table: resb 4096               ; Reserve 4KiB for P4
+p3_table: resb 4096               ; Reserve 4KiB for P3
+p2_table: resb 4096               ; Reserve 4KiB for P2
 stack_bottom: resb 4096 * 4       ; Reserve 4 pages for stack
 stack_top:                        ; Stack top marker
-
-section .rodata
-gdt64:
-    dq 0                          ; Null descriptor
-.code: equ $ - gdt64              ; Offset
-    dq 0x20980000000000           ; Code segment descriptor
-.pointer:
-    dw $ - gdt64 - 1              ; Size
-    dq gdt64                      ; Base address

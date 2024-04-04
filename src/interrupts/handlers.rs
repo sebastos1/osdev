@@ -17,6 +17,16 @@ pub extern "x86-interrupt" fn double_fault() {
     crate::util::hlt_loop();
 }
 
+pub extern "x86-interrupt" fn general_protection_fault() {
+    print!("\nEXCEPTION: GENERAL PROTECTION FAULT\n");
+    crate::util::hlt_loop();
+}
+
+pub extern "x86-interrupt" fn page_fault() {
+    print!("\nEXCEPTION: PAGE FAULT\n");
+    crate::util::hlt_loop();
+}
+
 pub extern "x86-interrupt" fn timer_interrupt() {
     // print!(".");
     SYSTEM_TICKS.fetch_add(1, Ordering::SeqCst);

@@ -11,6 +11,8 @@ use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
 pub enum InterruptIndex {
     DivideError,
     DoubleFault = 8,
+    GeneralProtectionFault = 13,
+    PageFault = 14,
     Timer = PIC_OFFSET,
     Keyboard,
 }
@@ -96,6 +98,8 @@ pub fn init() {
             idt[InterruptIndex::DoubleFault].set_handler(handlers::double_fault).with_ist_index(DOUBLE_FAULT_IST_INDEX);
             idt[InterruptIndex::Keyboard].set_handler(handlers::keyboard_interrupt);
             idt[InterruptIndex::DivideError].set_handler(handlers::divide_error);
+            idt[InterruptIndex::GeneralProtectionFault].set_handler(handlers::general_protection_fault);
+            idt[InterruptIndex::PageFault].set_handler(handlers::page_fault);
             idt
         };
     }

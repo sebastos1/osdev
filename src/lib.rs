@@ -18,8 +18,8 @@ pub extern fn rust_main(multiboot_addr: usize) {
     memory::init(multiboot_addr);
     interrupts::init();
 
-    println!("Startup complete");
     music::play_songs();
+    println!("Loop reached");
     util::hlt_loop()
 }
 

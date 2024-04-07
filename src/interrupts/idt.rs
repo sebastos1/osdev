@@ -4,7 +4,7 @@ use super::pic::PIC_OFFSET;
 use lazy_static::lazy_static;
 use core::ops::{Index, IndexMut};
 use super::{TablePointer, Address};
-use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX};
+use super::gdt::{SegmentSelector, DOUBLE_FAULT_IST_INDEX, GDT};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -42,13 +42,12 @@ impl IdtEntry {
         self.fn_pointer_low = address as u16;
         self.fn_pointer_middle = (address >> 16) as u16;
         self.fn_pointer_high = (address >> 32) as u32;
-        self.cs = super::gdt::GDT.selectors.code;
+        self.cs = GDT.selectors.code;
         self.flags |= 0b10000000;
         self
     }
 
     fn with_ist_index(&mut self, index: usize) {
-        assert!(index <= 7, "IST index must be between 0 and 7");
         self.ist = index as u8;
     }
 }

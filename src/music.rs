@@ -58,7 +58,6 @@ pub fn play_songs() {
     ];
 
     for (name, melody) in melodies.iter() {
-        stop_sound();
         println!("Now playing: {:?}", name);
         sleep_busy(500);
         play_melody(melody);
